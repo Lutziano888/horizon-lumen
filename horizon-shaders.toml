@@ -1,0 +1,378 @@
+schema = 1
+id = "lumen"
+name = "Lumen"
+version = "2.1.0"
+api = "0.1"
+description = "Gemuetlicher Shader im Stil von Photon: weiche Schatten, warmer Himmel, volumetrische Wolken, Lichtstrahlen, klares Wasser mit Spiegelungen, schoenes Unterwasser, wehende Pflanzen und farbiges Licht. Eigener Code."
+authors = ["Lutziano888"]
+license = "MIT"
+shared = ["common.wgsl"]
+
+[sky]
+file = "sky.wgsl"
+name = "Atmosphaere"
+clouds = false
+sun = false
+
+[vertex]
+file = "vertex.wgsl"
+
+[material]
+file = "material.wgsl"
+name = "Licht"
+fog = false
+
+[weather]
+file = "weather.wgsl"
+name = "Regen und Schnee"
+
+[shadow]
+resolution = 2048
+distance = 128.0
+
+[reflection]
+option = "reflections"
+
+[[post]]
+file = "post/clouds.wgsl"
+name = "Wolken"
+
+[[post]]
+file = "post/fog.wgsl"
+name = "Luft und Lichtstrahlen"
+
+[[post]]
+file = "post/rays.wgsl"
+name = "Sonnenstrahlen"
+
+[[post]]
+file = "post/bloom.wgsl"
+name = "Bloom"
+
+[[post]]
+file = "post/grade.wgsl"
+name = "Tonemapping"
+
+# --- Optionen ---
+
+[[pages]]
+id = "main"
+name = "Lumen"
+items = ["page:light", "page:sky", "page:water", "page:image"]
+
+[[pages]]
+id = "light"
+name = "Licht und Schatten"
+description = "Sonne, Schatten, Himmelslicht, Fackeln und Pflanzen."
+items = ["sun_strength", "shadow_softness", "ambient_strength", "ambient_blue", "torch_warmth", "colored_lights", "waving"]
+
+[[pages]]
+id = "sky"
+name = "Himmel und Luft"
+description = "Wolken, Wolkenschatten, Dunst und Lichtstrahlen."
+items = ["soft_clouds", "cloud_amount", "cloud_shadows", "haze", "volumetric_light", "rays"]
+
+[[pages]]
+id = "water"
+name = "Wasser"
+description = "Wellen, Klarheit und Spiegelungen."
+items = ["water_waves", "water_clarity", "reflections"]
+
+[[pages]]
+id = "image"
+name = "Bild"
+description = "Belichtung, Farben, Bloom und Vignette."
+items = ["exposure", "saturation", "bloom", "vignette"]
+
+[[options]]
+id = "sun_strength"
+name = "Sonnenlicht"
+description = "Wie stark das direkte Sonnenlicht ist."
+type = "float"
+default = 1.0
+min = 0.0
+max = 2.0
+step = 0.05
+
+[[options]]
+id = "shadow_softness"
+name = "Weiche Schatten"
+description = "Wie weich die Schattenkanten sind."
+type = "float"
+default = 1.0
+min = 0.25
+max = 3.0
+step = 0.25
+
+[[options]]
+id = "ambient_strength"
+name = "Himmelslicht"
+description = "Wie hell Schattenseiten vom Himmel beleuchtet werden."
+type = "float"
+default = 0.85
+min = 0.25
+max = 2.0
+step = 0.05
+
+[[options]]
+id = "ambient_blue"
+name = "Blaue Schatten"
+description = "Wie blau das Himmelslicht in den Schatten ist."
+type = "float"
+default = 0.45
+min = 0.0
+max = 1.0
+step = 0.05
+
+[[options]]
+id = "torch_warmth"
+name = "Fackelwaerme"
+type = "float"
+default = 0.7
+min = 0.0
+max = 1.0
+step = 0.05
+
+[[options]]
+id = "colored_lights"
+name = "Farbiges Licht"
+description = "Seelenfackeln leuchten blau, Redstone rot, Amethyst lila und so weiter."
+type = "bool"
+default = true
+
+[[options]]
+id = "waving"
+name = "Wehende Pflanzen"
+description = "Wie stark Blaetter, Gras und Blumen im Wind wehen (0 = aus)."
+type = "float"
+default = 1.0
+min = 0.0
+max = 2.0
+step = 0.1
+
+[[options]]
+id = "soft_clouds"
+name = "Volumetrische Wolken"
+description = "Weiche, volumetrische Wolken statt Vanillas Block-Wolken (0 = keine Wolken)."
+type = "float"
+default = 1.0
+min = 0.0
+max = 1.0
+step = 0.05
+
+[[options]]
+id = "cloud_amount"
+name = "Wolkenmenge"
+type = "float"
+default = 0.4
+min = 0.0
+max = 1.0
+step = 0.05
+
+[[options]]
+id = "cloud_shadows"
+name = "Wolkenschatten"
+description = "Ziehende Schatten der Wolken auf dem Boden."
+type = "float"
+default = 0.6
+min = 0.0
+max = 1.0
+step = 0.05
+
+[[options]]
+id = "haze"
+name = "Dunst"
+description = "Luftperspektive: entfernte Berge werden blasser und blauer."
+type = "float"
+default = 0.5
+min = 0.0
+max = 1.0
+step = 0.05
+
+[[options]]
+id = "volumetric_light"
+name = "Volumetrisches Licht"
+description = "Sichtbare Lichtstrahlen in der Luft, z. B. zwischen Baeumen."
+type = "float"
+default = 0.5
+min = 0.0
+max = 1.5
+step = 0.05
+
+[[options]]
+id = "rays"
+name = "Sonnenstrahlen"
+description = "Strahlen rund um die Sonne am Himmel."
+type = "float"
+default = 0.3
+min = 0.0
+max = 1.0
+step = 0.05
+
+[[options]]
+id = "water_waves"
+name = "Wellen"
+type = "float"
+default = 1.0
+min = 0.0
+max = 2.0
+step = 0.1
+
+[[options]]
+id = "water_clarity"
+name = "Klares Wasser"
+description = "Wie weit man ins Wasser hineinsieht."
+type = "float"
+default = 0.5
+min = 0.0
+max = 1.0
+step = 0.05
+
+[[options]]
+id = "reflections"
+name = "Spiegelungen"
+description = "Bloecke spiegeln sich im Wasser (kostet etwas Leistung)."
+type = "bool"
+default = true
+
+[[options]]
+id = "exposure"
+name = "Belichtung"
+type = "float"
+default = 1.0
+min = 0.5
+max = 2.0
+step = 0.05
+
+[[options]]
+id = "saturation"
+name = "Saettigung"
+type = "float"
+default = 1.06
+min = 0.0
+max = 2.0
+step = 0.02
+
+[[options]]
+id = "bloom"
+name = "Bloom"
+type = "float"
+default = 0.45
+min = 0.0
+max = 1.0
+step = 0.05
+
+[[options]]
+id = "vignette"
+name = "Vignette"
+type = "bool"
+default = true
+
+# --- Material-Ids (wehende Pflanzen und Durchleuchtung) ---
+
+[[materials]]
+id = 1
+sprites = ["block/*_leaves"]
+
+[[materials]]
+id = 2
+sprites = [
+    "block/short_grass", "block/grass", "block/fern", "block/dead_bush", "block/bush",
+    "block/short_dry_grass", "block/tall_dry_grass", "block/firefly_bush", "block/*_sapling",
+    "block/dandelion", "block/poppy", "block/blue_orchid", "block/allium", "block/azure_bluet",
+    "block/*_tulip", "block/oxeye_daisy", "block/cornflower", "block/lily_of_the_valley",
+    "block/wither_rose", "block/torchflower", "block/open_eyeblossom", "block/closed_eyeblossom",
+    "block/wheat_stage*", "block/carrots_stage*", "block/potatoes_stage*", "block/beetroots_stage*",
+    "block/sweet_berry_bush_stage*", "block/crimson_roots", "block/warped_roots", "block/nether_sprouts",
+]
+
+[[materials]]
+id = 3
+sprites = [
+    "block/tall_grass_bottom", "block/large_fern_bottom", "block/lilac_bottom",
+    "block/rose_bush_bottom", "block/peony_bottom",
+]
+
+[[materials]]
+id = 4
+sprites = [
+    "block/tall_grass_top", "block/large_fern_top", "block/lilac_top",
+    "block/rose_bush_top", "block/peony_top",
+]
+
+[[materials]]
+id = 5
+sprites = [
+    "block/vine", "block/weeping_vines*", "block/twisting_vines*", "block/cave_vines*",
+    "block/hanging_roots", "block/pale_hanging_moss*",
+]
+
+[[materials]]
+id = 6
+sprites = ["block/seagrass", "block/tall_seagrass_bottom"]
+
+[[materials]]
+id = 7
+sprites = ["block/tall_seagrass_top"]
+
+[[materials]]
+id = 8
+sprites = ["block/kelp", "block/kelp_plant"]
+
+[[materials]]
+id = 9
+sprites = ["block/lily_pad"]
+
+# --- Farbiges Blocklicht ---
+
+[[lights]]
+color = [1.0, 0.58, 0.28]
+blocks = ["torch", "wall_torch", "lantern", "campfire", "fire", "jack_o_lantern", "furnace", "smoker", "blast_furnace", "*candle*"]
+
+[[lights]]
+color = [0.35, 0.75, 1.0]
+blocks = ["soul_*"]
+
+[[lights]]
+color = [1.0, 0.22, 0.12]
+blocks = ["redstone_torch", "redstone_wall_torch", "redstone_ore", "deepslate_redstone_ore"]
+
+[[lights]]
+color = [1.0, 0.75, 0.42]
+blocks = ["glowstone", "shroomlight", "redstone_lamp", "ochre_froglight", "*copper_bulb"]
+
+[[lights]]
+color = [0.65, 0.9, 1.0]
+blocks = ["sea_lantern", "conduit", "beacon"]
+
+[[lights]]
+color = [0.95, 0.9, 1.0]
+blocks = ["end_rod"]
+
+[[lights]]
+color = [0.75, 0.45, 1.0]
+blocks = ["amethyst_cluster", "*amethyst_bud", "crying_obsidian", "respawn_anchor", "nether_portal", "end_portal", "end_gateway"]
+
+[[lights]]
+color = [1.0, 0.42, 0.12]
+blocks = ["lava", "magma_block", "lava_cauldron"]
+
+[[lights]]
+color = [0.6, 1.0, 0.6]
+blocks = ["verdant_froglight", "copper_torch", "copper_wall_torch", "*copper_lantern"]
+
+[[lights]]
+color = [1.0, 0.65, 0.9]
+blocks = ["pearlescent_froglight"]
+
+[[lights]]
+color = [0.55, 0.85, 0.75]
+blocks = ["glow_lichen", "glow_berries", "cave_vines*", "sculk_catalyst"]
+
+[[particle_lights]]
+particles = ["firefly"]
+color = [0.75, 0.95, 0.35]
+reach = 3.0
+
+[budget]
+gpu_ms = 6.0
