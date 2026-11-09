@@ -17,16 +17,16 @@ Every effect can be changed in the game: Options > Horizon Settings > Shader Pac
 
 ## Quality levels
 
-Pick a **Grafikstufe** (quality level) that fits your PC. It sits at the top of the shader options:
+Pick a **Quality** level that fits your PC. It sits at the top of the shader options:
 
 | Level | Meant for | What changes |
 |---|---|---|
-| Niedrig | weak PCs, laptops | fewer cloud steps, no volumetric light, simpler water, sharper shadows |
-| Mittel | mid-range PCs | lighter clouds, light shafts and water |
-| Hoch | default | the normal Lumen look |
+| Low | weak PCs, laptops | fewer cloud steps, no volumetric light, simpler water, sharper shadows |
+| Medium | mid-range PCs | lighter clouds, light shafts and water |
+| High | default | the normal Lumen look |
 | Ultra | strong GPUs | smoother clouds, light shafts and bloom, extra soft shadows |
 
-The page *Grafik und Leistung* also has shadows on/off, shadow resolution (1024 to 4096), shadow distance (64 to 256 blocks) and reflections. Those cost the most performance and can be set separately from the level.
+The page *Graphics and Performance* also has shadows on/off, shadow resolution (1024 to 4096), shadow distance (64 to 256 blocks) and reflections. Those cost the most performance and can be set separately from the level.
 
 Needs a Horizon build from 2026-11-03 or newer.
 

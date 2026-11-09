@@ -3,14 +3,14 @@ id = "lumen"
 name = "Lumen"
 version = "2.5.1"
 api = "0.1"
-description = "Gemuetlicher Shader im Stil von Photon: weiche Schatten, warmer Himmel, volumetrische Wolken, Lichtstrahlen, klares Wasser mit Spiegelungen, schoenes Unterwasser, wehende Pflanzen und farbiges Licht. Eigener Code."
+description = "A cozy Photon-style shader: soft shadows, warm sky, volumetric clouds, light shafts, clear water with reflections, beautiful underwater, waving plants and coloured light. Original code."
 authors = ["Lutziano888"]
 license = "MIT"
 shared = ["common.wgsl"]
 
 [sky]
 file = "sky.wgsl"
-name = "Atmosphaere"
+name = "Atmosphere"
 clouds = false
 sun = false
 
@@ -19,12 +19,12 @@ file = "vertex.wgsl"
 
 [material]
 file = "material.wgsl"
-name = "Licht"
+name = "Lighting"
 fog = false
 
 [weather]
 file = "weather.wgsl"
-name = "Regen und Schnee"
+name = "Rain and Snow"
 
 [shadow]
 resolution = 2048
@@ -38,15 +38,15 @@ option = "reflections"
 
 [[post]]
 file = "post/clouds.wgsl"
-name = "Wolken"
+name = "Clouds"
 
 [[post]]
 file = "post/fog.wgsl"
-name = "Luft und Lichtstrahlen"
+name = "Air and Light Shafts"
 
 [[post]]
 file = "post/rays.wgsl"
-name = "Sonnenstrahlen"
+name = "Sun Rays"
 
 [[post]]
 file = "post/bloom.wgsl"
@@ -56,7 +56,7 @@ name = "Bloom"
 file = "post/grade.wgsl"
 name = "Tonemapping"
 
-# --- Optionen ---
+# --- Options ---
 
 [[pages]]
 id = "main"
@@ -65,69 +65,69 @@ items = ["quality", "page:performance", "page:light", "page:sky", "page:water", 
 
 [[pages]]
 id = "performance"
-name = "Grafik und Leistung"
-description = "Grafikstufe passend zum PC, dazu Schatten und Spiegelungen, die am meisten Leistung kosten."
+name = "Graphics and Performance"
+description = "A quality level that fits your PC, plus shadows and reflections, which cost the most performance."
 items = ["quality", "shadows", "shadow_quality", "shadow_distance", "reflections"]
 
 [[pages]]
 id = "light"
-name = "Licht und Schatten"
-description = "Sonne, Schatten, Himmelslicht, Fackeln und Pflanzen."
+name = "Light and Shadows"
+description = "Sun, shadows, sky light, torches and plants."
 items = ["sun_strength", "shadow_softness", "ambient_strength", "ambient_blue", "torch_warmth", "colored_lights", "waving"]
 
 [[pages]]
 id = "sky"
-name = "Himmel und Luft"
-description = "Wolken, Wolkenschatten, Dunst und Lichtstrahlen."
+name = "Sky and Air"
+description = "Clouds, cloud shadows, haze and light shafts."
 items = ["soft_clouds", "cloud_amount", "cloud_shadows", "haze", "volumetric_light", "rays"]
 
 [[pages]]
 id = "water"
-name = "Wasser"
-description = "Wellen, Klarheit und Spiegelungen."
+name = "Water"
+description = "Waves, clarity and reflections."
 items = ["water_waves", "water_clarity", "reflections"]
 
 [[pages]]
 id = "image"
-name = "Bild"
-description = "Belichtung, Farben, Bloom und Vignette."
+name = "Image"
+description = "Exposure, colours, bloom and vignette."
 items = ["exposure", "saturation", "bloom", "vignette"]
 
 [[options]]
 id = "quality"
-name = "Grafikstufe"
-description = "Niedrig fuer schwache PCs, Ultra fuer starke. Bestimmt, wie fein Wolken, Lichtstrahlen, weiche Schatten, Wasser und Bloom berechnet werden. Hoch ist der normale Lumen-Look."
+name = "Quality"
+description = "Low for weak PCs, Ultra for strong ones. Sets how finely clouds, light shafts, soft shadows, water and bloom are computed. High is the normal Lumen look."
 type = "choice"
-values = ["Niedrig", "Mittel", "Hoch", "Ultra"]
-default = "Hoch"
+values = ["Low", "Medium", "High", "Ultra"]
+default = "High"
 
 [[options]]
 id = "shadows"
-name = "Schatten"
-description = "Echte Schatten von Sonne und Mond. Aus spart am meisten Leistung."
+name = "Shadows"
+description = "Real shadows from the sun and moon. Turning them off saves the most performance."
 type = "bool"
 default = true
 
 [[options]]
 id = "shadow_quality"
-name = "Schattenaufloesung"
-description = "Wie scharf die Schatten sind: 1024 schnell, 2048 normal, 4096 sehr scharf."
+name = "Shadow Resolution"
+description = "How sharp shadows are: 1024 fast, 2048 normal, 4096 very sharp."
 type = "choice"
 values = ["1024", "2048", "3072", "4096"]
 default = "2048"
 
 [[options]]
 id = "shadow_distance"
-name = "Schattenweite"
-description = "Bis wie viele Bloecke um dich herum Schatten berechnet werden. Weiter kostet mehr und macht die Schatten etwas unschaerfer, wenn die Aufloesung gleich bleibt."
+name = "Shadow Distance"
+description = "How many blocks around you get shadows. Farther costs more and makes shadows a bit blurrier at the same resolution."
 type = "choice"
 values = ["64", "96", "128", "192", "256"]
 default = "128"
 
 [[options]]
 id = "sun_strength"
-name = "Sonnenlicht"
-description = "Wie stark das direkte Sonnenlicht ist."
+name = "Sunlight"
+description = "How strong direct sunlight is."
 type = "float"
 default = 1.0
 min = 0.0
@@ -136,8 +136,8 @@ step = 0.05
 
 [[options]]
 id = "shadow_softness"
-name = "Weiche Schatten"
-description = "Wie weich die Schattenkanten sind."
+name = "Soft Shadows"
+description = "How soft shadow edges are."
 type = "float"
 default = 1.0
 min = 0.25
@@ -146,8 +146,8 @@ step = 0.25
 
 [[options]]
 id = "ambient_strength"
-name = "Himmelslicht"
-description = "Wie hell Schattenseiten vom Himmel beleuchtet werden."
+name = "Sky Light"
+description = "How brightly the sky lights shaded sides."
 type = "float"
 default = 0.85
 min = 0.25
@@ -156,8 +156,8 @@ step = 0.05
 
 [[options]]
 id = "ambient_blue"
-name = "Blaue Schatten"
-description = "Wie blau das Himmelslicht in den Schatten ist."
+name = "Blue Shadows"
+description = "How blue the sky light in shadows is."
 type = "float"
 default = 0.45
 min = 0.0
@@ -166,7 +166,7 @@ step = 0.05
 
 [[options]]
 id = "torch_warmth"
-name = "Fackelwaerme"
+name = "Torch Warmth"
 type = "float"
 default = 0.7
 min = 0.0
@@ -175,15 +175,15 @@ step = 0.05
 
 [[options]]
 id = "colored_lights"
-name = "Farbiges Licht"
-description = "Seelenfackeln leuchten blau, Redstone rot, Amethyst lila und so weiter."
+name = "Coloured Light"
+description = "Soul torches glow blue, redstone red, amethyst purple and so on."
 type = "bool"
 default = true
 
 [[options]]
 id = "waving"
-name = "Wehende Pflanzen"
-description = "Wie stark Blaetter, Gras und Blumen im Wind wehen (0 = aus)."
+name = "Waving Plants"
+description = "How much leaves, grass and flowers wave in the wind (0 = off)."
 type = "float"
 default = 1.0
 min = 0.0
@@ -192,8 +192,8 @@ step = 0.1
 
 [[options]]
 id = "soft_clouds"
-name = "Volumetrische Wolken"
-description = "Weiche, volumetrische Wolken statt Vanillas Block-Wolken (0 = keine Wolken)."
+name = "Volumetric Clouds"
+description = "Soft volumetric clouds instead of vanilla's block clouds (0 = no clouds)."
 type = "float"
 default = 1.0
 min = 0.0
@@ -202,7 +202,7 @@ step = 0.05
 
 [[options]]
 id = "cloud_amount"
-name = "Wolkenmenge"
+name = "Cloud Amount"
 type = "float"
 default = 0.4
 min = 0.0
@@ -211,8 +211,8 @@ step = 0.05
 
 [[options]]
 id = "cloud_shadows"
-name = "Wolkenschatten"
-description = "Ziehende Schatten der Wolken auf dem Boden."
+name = "Cloud Shadows"
+description = "Drifting cloud shadows on the ground."
 type = "float"
 default = 0.6
 min = 0.0
@@ -221,8 +221,8 @@ step = 0.05
 
 [[options]]
 id = "haze"
-name = "Dunst"
-description = "Luftperspektive: entfernte Berge werden blasser und blauer."
+name = "Haze"
+description = "Aerial perspective: distant mountains turn paler and bluer."
 type = "float"
 default = 0.5
 min = 0.0
@@ -231,8 +231,8 @@ step = 0.05
 
 [[options]]
 id = "volumetric_light"
-name = "Volumetrisches Licht"
-description = "Sichtbare Lichtstrahlen in der Luft, z. B. zwischen Baeumen."
+name = "Volumetric Light"
+description = "Visible light shafts in the air, for example between trees."
 type = "float"
 default = 0.5
 min = 0.0
@@ -241,8 +241,8 @@ step = 0.05
 
 [[options]]
 id = "rays"
-name = "Sonnenstrahlen"
-description = "Strahlen rund um die Sonne am Himmel."
+name = "Sun Rays"
+description = "Rays around the sun in the sky."
 type = "float"
 default = 0.3
 min = 0.0
@@ -251,7 +251,7 @@ step = 0.05
 
 [[options]]
 id = "water_waves"
-name = "Wellen"
+name = "Waves"
 type = "float"
 default = 1.0
 min = 0.0
@@ -260,8 +260,8 @@ step = 0.1
 
 [[options]]
 id = "water_clarity"
-name = "Klares Wasser"
-description = "Wie weit man ins Wasser hineinsieht."
+name = "Water Clarity"
+description = "How far you can see into the water."
 type = "float"
 default = 0.5
 min = 0.0
@@ -270,14 +270,14 @@ step = 0.05
 
 [[options]]
 id = "reflections"
-name = "Spiegelungen"
-description = "Bloecke spiegeln sich im Wasser (kostet etwas Leistung)."
+name = "Reflections"
+description = "Blocks reflect in water (costs some performance)."
 type = "bool"
 default = true
 
 [[options]]
 id = "exposure"
-name = "Belichtung"
+name = "Exposure"
 type = "float"
 default = 1.0
 min = 0.5
@@ -286,7 +286,7 @@ step = 0.05
 
 [[options]]
 id = "saturation"
-name = "Saettigung"
+name = "Saturation"
 type = "float"
 default = 1.06
 min = 0.0
@@ -308,7 +308,7 @@ name = "Vignette"
 type = "bool"
 default = true
 
-# --- Material-Ids (wehende Pflanzen und Durchleuchtung) ---
+# --- Material ids (waving plants and translucency) ---
 
 [[materials]]
 id = 1
@@ -363,7 +363,7 @@ sprites = ["block/kelp", "block/kelp_plant"]
 id = 9
 sprites = ["block/lily_pad"]
 
-# --- Farbiges Blocklicht ---
+# --- Coloured block light ---
 
 [[lights]]
 color = [1.0, 0.58, 0.28]
