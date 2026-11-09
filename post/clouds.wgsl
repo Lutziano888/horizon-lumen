@@ -26,7 +26,9 @@ fn post(input: PostInput) -> vec4<f32> {
         return input.color;
     }
 
-    let steps = 16;
+    // Niedrig 8, Mittel 12, Hoch 16, Ultra 24 Schritte durch die Wolkenschicht.
+    let steps = by_quality(8, 12, 16, 24);
+    let fine = quality >= 1u;
     let dt = (t_far - t_near) / f32(steps);
     let jitter = pixel_noise(input.pixel);
     let cam = frame.camera_position;
@@ -47,13 +49,18 @@ fn post(input: PostInput) -> vec4<f32> {
     for (var i = 0; i < steps; i++) {
         let t = t_near + (f32(i) + jitter) * dt;
         let pw = cam + d * t;
-        let dens = cloud_density(pw, true);
+        let dens = cloud_density(pw, fine);
         if dens > 0.002 {
             // Licht zur Sonne: wie viel Wolke liegt dazwischen?
             var od = 0.0;
-            for (var j = 1; j <= 2; j++) {
-                let s = f32(j * j) * 10.0;
-                od += cloud_density(pw + light_dir * s, false) * f32(2 * j - 1) * 10.0;
+            if fine {
+                for (var j = 1; j <= 2; j++) {
+                    let s = f32(j * j) * 10.0;
+                    od += cloud_density(pw + light_dir * s, false) * f32(2 * j - 1) * 10.0;
+                }
+            } else {
+                // Niedrig: eine Probe fuer die ganze Strecke.
+                od = cloud_density(pw + light_dir * 18.0, false) * 40.0;
             }
             // Mehrfachstreuung: Wolken werden innen nie ganz schwarz.
             let light_t = max(exp(-od * SIGMA * 0.9), 0.45 * exp(-od * SIGMA * 0.15));

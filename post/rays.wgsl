@@ -16,7 +16,7 @@ fn post(input: PostInput) -> vec4<f32> {
     let aspect = frame.resolution.x / frame.resolution.y;
     let to_sun = s.xy - input.uv;
     let dist = length(to_sun * vec2<f32>(aspect, 1.0));
-    let steps = 20;
+    let steps = by_quality(10, 14, 20, 28);
     let delta = to_sun / f32(steps) * 0.85;
     var uv = input.uv;
     var sum = 0.0;

@@ -3,6 +3,15 @@
 override soft_clouds: f32 = 1.0;
 override cloud_amount: f32 = 0.4;
 
+// Grafikstufe: 0 Niedrig, 1 Mittel, 2 Hoch, 3 Ultra. Hoch ist der bisherige Look;
+// die anderen Stufen tasten weniger oder mehr ab, das Design bleibt gleich.
+override quality: u32 = 2u;
+
+// Waehlt eine Anzahl je Grafikstufe.
+fn by_quality(low: i32, mid: i32, high: i32, ultra: i32) -> i32 {
+    return select(select(select(low, mid, quality >= 1u), high, quality >= 2u), ultra, quality >= 3u);
+}
+
 fn luminance(c: vec3<f32>) -> f32 {
     return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
 }
@@ -189,4 +198,18 @@ fn light_dir() -> vec3<f32> {
 fn camera_underwater() -> bool {
     return frame.eye_in == 1u || frame.in_water > 0.5
         || (frame.has_reflection == 1u && frame.camera_position.y < frame.water_plane - 0.05);
+}
+
+// Lichtmuster unter Wasser (Kaustiken): zwei verschobene Schichten, scharfe helle Linien.
+fn caustics(world: vec3<f32>) -> f32 {
+    let t = frame.time * 0.7;
+    var sum = 0.0;
+    for (var i = 0; i < 2; i++) {
+        let s = 1.1 + f32(i) * 0.73;
+        let p = world.xz * s + vec2<f32>(f32(i) * 3.7, f32(i) * 1.3);
+        let a = sin(p.x + sin(p.y * 0.7 + t) * 1.3 + t * 0.6);
+        let b = sin(p.y * 1.1 + sin(p.x * 0.8 - t * 0.9) * 1.3 - t * 0.5);
+        sum += pow(clamp(1.0 - abs(a + b) * 0.5, 0.0, 1.0), 6.0);
+    }
+    return 0.5 + 0.8 * sum;
 }

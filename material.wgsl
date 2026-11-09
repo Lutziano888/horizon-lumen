@@ -18,6 +18,10 @@ override cloud_shadows: f32 = 0.6;
 override water_waves: f32 = 1.0;
 override water_clarity: f32 = 0.5;
 override reflections: bool = true;
+// Werden von Horizon selbst gelesen ([shadow] in horizon-shaders.toml).
+override shadows: bool = true;
+override shadow_quality: u32 = 1u;
+override shadow_distance: u32 = 2u;
 
 // --- Hilfen ---
 
@@ -48,15 +52,6 @@ fn encode(lit: vec3<f32>) -> vec3<f32> {
     return to_display(c);
 }
 
-// Lichtmuster unter Wasser.
-fn caustics(world: vec3<f32>) -> f32 {
-    let t = frame.time * 0.8;
-    let p = world.xz * 1.3;
-    let a = sin(p.x + sin(p.y * 0.7 + t) + t * 0.6);
-    let b = sin(p.y * 1.1 + sin(p.x * 0.8 - t * 0.9) - t * 0.5);
-    let c = 1.0 - abs(a + b) * 0.5;
-    return 0.55 + 0.9 * pow(clamp(c, 0.0, 1.0), 4.0);
-}
 
 // Wie viel direktes Licht ankommt, farbig wo es durch Wasser oder Glas faellt.
 fn sun_shadow(pos: vec3<f32>, offset_dir: vec3<f32>, sky: f32, world: vec3<f32>) -> vec3<f32> {
@@ -80,15 +75,20 @@ fn sun_shadow(pos: vec3<f32>, offset_dir: vec3<f32>, sky: f32, world: vec3<f32>)
     let z_per_block = length(vec3<f32>(m[0].z, m[1].z, m[2].z));
     let z = sp.z - z_per_block * texel * 0.6;
 
-    // 3x3 Abtastungen mit je 2x2 Filter: weiche Kanten ohne Rauschen.
-    let step = 2.0 * shadow_softness / frame.shadow_resolution;
+    // NxN Abtastungen mit je 2x2 Filter: weiche Kanten ohne Rauschen.
+    // Niedrig 1, Mittel 2x2, Hoch 3x3, Ultra 5x5 (gleich weit, nur feiner).
+    let n = by_quality(1, 2, 3, 5);
+    let span = 2.0 * shadow_softness / frame.shadow_resolution;
+    let step = span * select(2.0 / f32(max(n - 1, 1)), 1.0, n <= 2);
+    let first = -0.5 * f32(n - 1);
     var lit = 0.0;
-    for (var i = -1; i <= 1; i++) {
-        for (var j = -1; j <= 1; j++) {
-            lit += textureSampleCompareLevel(shadow_map, shadow_sampler, sp.xy + vec2<f32>(f32(i), f32(j)) * step, z);
+    for (var i = 0; i < n; i++) {
+        for (var j = 0; j < n; j++) {
+            let o = vec2<f32>(first + f32(i), first + f32(j)) * step;
+            lit += textureSampleCompareLevel(shadow_map, shadow_sampler, sp.xy + o, z);
         }
     }
-    lit /= 9.0;
+    lit /= f32(n * n);
 
     var color = vec3<f32>(lit);
     let lit_t = textureSampleCompareLevel(shadow_map_translucent, shadow_sampler, sp.xy, z);
@@ -99,7 +99,7 @@ fn sun_shadow(pos: vec3<f32>, offset_dir: vec3<f32>, sky: f32, world: vec3<f32>)
         var tint = to_linear(tc.rgb) * (1.0 - tc.a * 0.4);
         if tc.a > 0.995 {
             // Wasser: blaugruen mit tanzenden Kaustiken.
-            tint = vec3<f32>(0.50, 0.80, 0.86) * caustics(world);
+            tint = vec3<f32>(0.45, 0.85, 0.88) * (caustics(world) * 1.35 - 0.2);
         }
         color = vec3<f32>(lit - through) + tint * through;
     }
@@ -113,7 +113,13 @@ fn cloud_shade(world: vec3<f32>, l: vec3<f32>) -> f32 {
     }
     let t1 = (C_BOTTOM + 18.0 - world.y) / l.y;
     let t2 = (C_BOTTOM + 36.0 - world.y) / l.y;
-    let d = cloud_density(world + l * t1, false) + cloud_density(world + l * t2, false);
+    // Niedrig: eine Probe statt zwei.
+    var d = cloud_density(world + l * t1, false);
+    if quality >= 1u {
+        d += cloud_density(world + l * t2, false);
+    } else {
+        d *= 2.0;
+    }
     let strength = cloud_shadows * min(soft_clouds, 1.0) * smoothstep(0.08, 0.25, l.y);
     return 1.0 - smoothstep(0.0, 0.7, d) * 0.8 * strength;
 }
@@ -142,23 +148,83 @@ fn apply_fog(color: vec3<f32>, pos: vec3<f32>, dist: f32) -> vec3<f32> {
 
 // --- Wasser ---
 
-// Steigung der Wellen (dh/dx, dh/dz) aus vier gerichteten Wellen.
-fn wave_slope(xz: vec2<f32>) -> vec2<f32> {
-    let t = frame.time;
-    var g = vec2<f32>(0.0);
-    let d1 = vec2<f32>(0.80, 0.60);
-    let d2 = vec2<f32>(-0.50, 0.87);
-    let d3 = vec2<f32>(0.95, -0.31);
-    let d4 = vec2<f32>(-0.22, -0.97);
-    g += d1 * 0.90 * 0.034 * cos(dot(d1, xz) * 0.90 + t * 1.2);
-    g += d2 * 1.60 * 0.020 * cos(dot(d2, xz) * 1.60 + t * 1.6);
-    g += d3 * 2.70 * 0.011 * cos(dot(d3, xz) * 2.70 + t * 2.1);
-    g += d4 * 4.30 * 0.006 * cos(dot(d4, xz) * 4.30 + t * 2.7);
-    // Feines Kraeuseln aus Rauschen.
-    let q = vec3<f32>(xz.x * 1.7 + t * 0.4, t * 0.3, xz.y * 1.7 - t * 0.3);
-    let e = 0.15;
+// Hoehe der Wellen an einer Stelle (0..1): mehrere Wellenzuege mit weichem Profil
+// (quadrierter Sinus: runde Kaemme, flache Taeler), jeder etwas gedreht und laenger,
+// und jeder mit einer eigenen, langsam wandernden Rausch-Verschiebung der Phase. So
+// gibt es keine geraden Linien und kein Muster, das sich wiederholt. Dazu ruhige und
+// bewegte Zonen ueber grosse Flaechen.
+fn wave_train(xz: vec2<f32>, t: f32, detail: f32, start: vec2<f32>, seed: f32) -> f32 {
+    var dir = start;
+    let turn = mat2x2<f32>(-0.7374, 0.6755, -0.6755, -0.7374);
+    var amp = 1.0;
+    var wl = 3.5;
+    var sum = 0.0;
+    var norm = 0.0;
+    // Feineres Rauschen: biegt auch die grossen Wellen, so entstehen keine geraden,
+    // parallelen Linien quer uebers Wasser.
+    var noise_pos = (xz + vec2<f32>(0.0, t * 0.25)) * 0.12;
+    // Niedrig 3, Mittel 4, sonst 5 Wellen (die feinsten zuerst weg).
+    let count = by_quality(3, 4, 5, 5);
+    for (var i = 0; i < count; i++) {
+        let n = vnoise(vec3<f32>(noise_pos, f32(i) * 7.3 + seed)) * 1.6;
+        let k = 6.2832 / wl;
+        let x = sqrt(9.8 * k) * t - k * (dot(dir, xz) + n);
+        let s = sin(x) * 0.5 + 0.5;
+        let fade = select(1.0, detail, i >= 2);
+        // Die laengste Welle nicht dominieren lassen.
+        let a = amp * select(1.0, 0.55, i == 0);
+        sum += s * s * a * fade;
+        norm += a;
+        amp *= 0.62;
+        wl /= 1.7;
+        dir = turn * dir;
+        noise_pos *= 1.6;
+    }
+    return sum / norm;
+}
+
+fn wave_height(xz: vec2<f32>, t: f32, detail: f32) -> f32 {
+    // Zwei Wellenfelder aus verschiedenen Richtungen, ueber die Flaeche gemischt,
+    // dazu ruhige und bewegte Zonen.
+    let zones = max(0.35, vnoise(vec3<f32>(xz * 0.012 + vec2<f32>(0.0, t * 0.0012), 3.0)) * 2.0 - 0.4);
+    let a = wave_train(xz, t, detail, vec2<f32>(0.866, 0.5), 0.0);
+    // Niedrig: nur ein Wellenfeld.
+    if quality == 0u {
+        return a * zones;
+    }
+    let m = clamp((vnoise(vec3<f32>(xz * 0.008 + vec2<f32>(0.0, t * 0.01), 11.0)) - 0.5) * 3.0 + 0.5, 0.0, 1.0);
+    let b = wave_train(xz, t, detail, vec2<f32>(-0.34, 0.94), 40.0);
+    return mix(a, b, m) * zones;
+}
+
+// Steigung der Wellen (dh/dx, dh/dz) aus der Hoehe, dazu Kraeuseln und Regenringe.
+fn wave_slope(xz: vec2<f32>, detail: f32) -> vec2<f32> {
+    let t = frame.time * 0.5 * (1.0 + frame.rain * 0.4 + frame.thunder * 0.4);
+    let e = 0.1;
+    let h0 = wave_height(xz, t, detail);
+    let hx = wave_height(xz + vec2<f32>(e, 0.0), t, detail);
+    let hz = wave_height(xz + vec2<f32>(0.0, e), t, detail);
+    let strength = 0.11 * (1.0 + frame.rain * 0.6);
+    var g = vec2<f32>(hx - h0, hz - h0) / e * strength;
+    // Kraeuseln.
+    let q = vec3<f32>(xz.x * 2.3 + t * 0.8, t * 0.6, xz.y * 2.3 - t * 0.7);
     let n0 = vnoise(q);
-    g += vec2<f32>(vnoise(q + vec3<f32>(e, 0.0, 0.0)) - n0, vnoise(q + vec3<f32>(0.0, 0.0, e)) - n0) / e * 0.012;
+    g += vec2<f32>(vnoise(q + vec3<f32>(0.12, 0.0, 0.0)) - n0, vnoise(q + vec3<f32>(0.0, 0.0, 0.12)) - n0) / 0.12 * 0.012 * detail;
+    // Regentropfen: Ringe, die sich ausbreiten.
+    if quality >= 1u && frame.rain > 0.05 && detail > 0.2 {
+        let cell = floor(xz * 1.5);
+        for (var j = 0; j < 4; j++) {
+            let off = vec2<f32>(f32(j % 2), f32(j / 2));
+            let c = cell + off;
+            let h = hash3(vec3<i32>(vec2<i32>(c), 7));
+            let life = fract(frame.time * 0.9 + h);
+            let center = (c + vec2<f32>(hash3(vec3<i32>(vec2<i32>(c), 3)), hash3(vec3<i32>(vec2<i32>(c), 5)))) / 1.5;
+            let dv = xz - center;
+            let r = length(dv);
+            let ring = sin((r - life * 0.6) * 40.0) * smoothstep(0.12, 0.0, abs(r - life * 0.6)) * (1.0 - life);
+            g += dv / max(r, 1e-3) * ring * 0.08 * frame.rain * detail;
+        }
+    }
     return g;
 }
 
@@ -176,10 +242,13 @@ fn shade_water(input: MaterialInput, pos: vec3<f32>, dist: f32, view: vec3<f32>,
     let top = input.face == 1u;
     let l = light_dir();
     var n = input.normal;
-    if top && !below && water_waves > 0.0 {
-        let fade = water_waves * mix(0.25, 1.0, exp(-dist / 48.0));
-        let g = wave_slope(world.xz) * fade;
-        n = normalize(vec3<f32>(-g.x, 1.0, -g.y));
+    if top && water_waves > 0.0 {
+        let detail = exp(-dist / 24.0);
+        // In der Ferne flacher: sonst werden die Wellen dort zu duennen hellen Linien.
+        let fade = water_waves * mix(0.12, 1.0, exp(-dist / 35.0));
+        let g = wave_slope(world.xz, detail) * fade;
+        // Von unten gesehen zeigt die Normale nach unten.
+        n = normalize(vec3<f32>(-g.x, 1.0, -g.y)) * select(1.0, -1.0, below);
     }
     let nv = max(dot(n, -view), 0.0);
     let fresnel = 0.02 + 0.98 * pow(1.0 - nv, 5.0);
@@ -188,7 +257,7 @@ fn shade_water(input: MaterialInput, pos: vec3<f32>, dist: f32, view: vec3<f32>,
     let size = vec2<f32>(textureDimensions(opaque_depth));
     // Nur die Wellen verschieben das Bild, nicht die Neigung der Flaeche selbst.
     let vn = (frame.view * vec4<f32>(n - input.normal, 0.0)).xyz;
-    let bend = vec2<f32>(vn.x, -vn.y) * 0.035 * exp(-dist / 64.0);
+    var bend = vec2<f32>(vn.x, -vn.y) * 0.025 * exp(-dist / 64.0);
     let clip = frame.projection * frame.view * vec4<f32>(pos, 1.0);
     let surface_depth = clip.z / clip.w;
     let p0 = vec2<i32>(clamp(input.screen * size, vec2<f32>(0.0), size - 1.0));
@@ -205,10 +274,13 @@ fn shade_water(input: MaterialInput, pos: vec3<f32>, dist: f32, view: vec3<f32>,
     let sky_amount = input.light.y * input.light.y;
 
     if below {
-        // Von unten: das Fenster nach oben, ausserhalb davon Totalreflexion.
-        let window = smoothstep(0.62, 0.72, nv);
-        let deep = vec3<f32>(0.004, 0.025, 0.04) * (luminance(direct) * 0.3 + 0.4) * mix(0.3, 1.0, sky_amount);
-        return mix(deep, behind * vec3<f32>(0.75, 0.92, 1.0), window);
+        // Von unten: Snells Fenster nach oben (der Himmel, leicht gewellt und hell),
+        // ausserhalb davon spiegelt die Oberflaeche das Wasser darunter.
+        let window = smoothstep(0.60, 0.74, nv);
+        let deep = vec3<f32>(0.010, 0.085, 0.120) * (luminance(direct) * 0.25 + sky_light(ambient_blue) * 0.9 + 0.02) * mix(0.3, 1.0, sky_amount);
+        let rim = (1.0 - smoothstep(0.60, 0.68, nv)) * smoothstep(0.52, 0.60, nv);
+        let sky_seen = behind * vec3<f32>(0.80, 0.95, 1.0) * 1.15 + direct * shadow * pow(max(dot(-view, l), 0.0), 60.0) * 2.0;
+        return mix(deep, sky_seen, window) + vec3<f32>(0.10, 0.20, 0.22) * rim * sky_amount;
     }
 
     // Wassertiefe entlang des Blicks.
@@ -223,22 +295,47 @@ fn shade_water(input: MaterialInput, pos: vec3<f32>, dist: f32, view: vec3<f32>,
     let biome = to_linear(input.tint.rgb);
     let scatter = mix(vec3<f32>(0.004, 0.022, 0.035), biome * 0.04, 0.4);
     let light_in = sky_light(ambient_blue) * sky_amount + direct * max(l.y, 0.0) * 0.35 * shadow;
-    let inside = behind * transmit + scatter * light_in * (1.0 - transmit) * 2.2;
+    var inside = behind * transmit + scatter * light_in * (1.0 - transmit) * 2.2;
+    // Durchleuchtete Wellen: gegen die Sonne leuchten die Kaemme tuerkis.
+    let back = pow(max(dot(view, l), 0.0), 4.0) * max(n.y - 0.0, 0.0) * (1.0 - nv);
+    inside += vec3<f32>(0.02, 0.16, 0.14) * direct * shadow * back * 0.6;
+    // Schaum am Ufer: duenne, weiche, wandernde Linie im ganz flachen Wasser.
+    if top && thickness < 0.6 {
+        let foam_noise = vnoise(vec3<f32>(world.xz * 3.0, frame.time * 0.6));
+        let foam = (1.0 - smoothstep(0.02, 0.25, thickness + foam_noise * 0.2)) * 0.18;
+        inside = mix(inside, (sky_light(ambient_blue) * sky_amount + direct * max(l.y, 0.0) * shadow) * 0.75, foam);
+    }
 
     // Spiegelung: eigener Himmel, Gelaende aus Horizons Wasserspiegel.
     let r = reflect(view, n);
-    var refl = to_linear(atmosphere(vec3<f32>(r.x, max(r.y, 0.01), r.z))) * mix(0.12, 1.0, smoothstep(0.5, 0.95, input.light.y));
+    var refl = to_linear(atmosphere(vec3<f32>(r.x, max(r.y, 0.01), r.z)));
+    // Wolken im Spiegelbild (grob, eine Probe in der Wolkenschicht).
+    if quality >= 1u && soft_clouds > 0.0 && r.y > 0.03 {
+        let tc = (C_BOTTOM + 20.0 - world.y) / r.y;
+        let cd = cloud_density(world + r * tc, false);
+        let cloud_col = to_linear(atmosphere(vec3<f32>(0.0, 1.0, 0.0))) * 0.6 + direct * 0.25;
+        refl = mix(refl, cloud_col + vec3<f32>(0.25) * daylight(), smoothstep(0.0, 0.6, cd) * 0.75 * exp(-tc / 3000.0));
+    }
+    refl *= mix(0.12, 1.0, smoothstep(0.5, 0.95, input.light.y));
     if reflections && frame.has_reflection == 1u && top && abs(world.y - frame.water_plane) < 0.6 {
-        let uv = clamp(input.screen + bend * 0.6, vec2<f32>(0.0), vec2<f32>(1.0));
+        let uv = clamp(input.screen + bend * 0.35, vec2<f32>(0.0), vec2<f32>(1.0));
         let mirror = textureSampleLevel(reflection, reflection_sampler, uv, 0.0).rgb;
-        let is_sky = 1.0 - smoothstep(0.04, 0.12, sky_distance(mirror));
+        // Himmel-Erkennung an der ungestoerten Stelle und weich: sonst springen die Wellen
+        // zwischen Spiegelbild und Himmel hin und her (fleckig, wie ein Oelfilm).
+        let plain = textureSampleLevel(reflection, reflection_sampler, input.screen, 0.0).rgb;
+        let is_sky = 1.0 - smoothstep(0.02, 0.20, min(sky_distance(mirror), sky_distance(plain)) * 0.5 + sky_distance(plain) * 0.5);
         refl = mix(to_linear(mirror) * 0.8, refl, is_sky);
     }
 
     // Sonnenglanz.
     let h = normalize(l - view);
     let nh = max(dot(n, h), 0.0);
-    let glint = (pow(nh, 1400.0) * 40.0 + pow(nh, 180.0) * 0.6) * fresnel * 4.0;
+    var glint = (pow(nh, 2400.0) * 18.0 + pow(nh, 300.0) * 0.15) * fresnel * 4.0;
+    // Glitzern: einzelne Funken auf den Wellen in Richtung Sonne.
+    if quality >= 1u {
+        let sparkle_cell = vec3<i32>(vec3<f32>(floor(world.x * 6.0), floor(frame.time * 4.0), floor(world.z * 6.0)));
+        glint += step(0.993, hash3(sparkle_cell)) * pow(nh, 200.0) * 18.0 * exp(-dist / 40.0);
+    }
     let spec = direct * shadow * glint;
 
     return mix(inside, refl, fresnel) + spec;
@@ -257,6 +354,8 @@ fn other_dimension(input: MaterialInput, base: vec4<f32>, dist: f32) -> Surface 
     }
     let glow = base.rgb * input.emission * 0.6;
     let lit = to_linear(base.rgb * light + glow) + input.colored_light * to_linear(base.rgb) * 1.5;
+    // Fuer post/bloom.wgsl: Gelaende, und wie stark es selbst leuchtet.
+    set_surface(input.normal, 0.0, 1.0 + clamp(input.emission, 0.0, 1.0));
     let color = apply_fog(encode(lit), input.position, dist);
     return Surface(vec4<f32>(color, base.a));
 }
@@ -280,6 +379,7 @@ fn material(input: MaterialInput) -> Surface {
     if input.fluid == 2u {
         // Lava leuchtet selbst.
         let lava = to_linear(base.rgb) * 2.4;
+        set_surface(input.normal, 0.0, 2.0);
         return Surface(vec4<f32>(apply_fog(encode(lava), pos, dist), base.a));
     }
 
@@ -346,8 +446,9 @@ fn material(input: MaterialInput) -> Surface {
     let glow = albedo * input.emission * (1.0 + 3.0 * smoothstep(0.3, 0.9, luminance(input.albedo.rgb)));
 
     var lit = albedo * (direct + ambient + torch + held + minimum) + glow;
-    // Fuer post/fog.wgsl: hier ist Gelaende (Mobs und Objekte haben das nicht).
-    set_surface(n, 0.0, 1.0);
+    // Fuer post/fog.wgsl und post/bloom.wgsl: hier ist Gelaende (Mobs und Objekte haben
+    // das nicht), und wie stark es selbst leuchtet.
+    set_surface(n, 0.0, 1.0 + clamp(input.emission, 0.0, 1.0));
     if wet > 0.01 {
         let r = reflect(view, n);
         let f = 0.02 + 0.98 * pow(1.0 - max(dot(n, -view), 0.0), 5.0);

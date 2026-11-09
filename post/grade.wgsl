@@ -7,7 +7,15 @@ override vignette: bool = true;
 
 fn post(input: PostInput) -> vec4<f32> {
     // Unter Tage passt sich das Auge etwas an (wie bei Photon), langsam ueber eye_light_smooth.
-    let underground = 1.0 - smoothstep(0.05, 0.5, frame.eye_light_smooth.y);
+    // Nur langsam heller werden, wenn es dunkel wird; wird es hell (aus der Hoehle
+    // oder aus dem Wasser auftauchen), sofort zurueck, sonst blendet es kurz.
+    let eye = max(frame.eye_light_smooth.y, frame.eye_light.y);
+    var underground = 1.0 - smoothstep(0.05, 0.5, eye);
+    // Unter Wasser regelt fog.wgsl die Helligkeit selbst.
+    underground *= 1.0 - frame.in_water;
+    if camera_underwater() {
+        underground = 0.0;
+    }
     let adapt = mix(1.0, 1.35, underground * overworld());
     var lin = pow(max(input.color.rgb, vec3<f32>(0.0)), vec3<f32>(2.2)) * exposure * adapt;
 
