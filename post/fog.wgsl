@@ -205,9 +205,10 @@ fn other_air(input: PostInput, d: vec3<f32>, dist: f32) -> vec3<f32> {
     let flat_dist = max(length(d.xz * dist), abs(d.y * dist));
     let end = max(frame.fog_end, 16.0);
     let edge = smoothstep(end * 0.6, end * 0.98, flat_dist);
-    let density = (0.004 + low * 0.012) * haze * 2.0 * mix(0.5, 1.5, thick);
+    let density = (0.003 + low * 0.010) * haze * 2.0 * mix(0.5, 1.5, thick);
     let amount = (1.0 - exp(-min(dist, 400.0) * density)) * 0.8;
-    let mist = mix(vec3<f32>(0.10, 0.05, 0.17), vec3<f32>(0.22, 0.10, 0.30), low);
+    // Dunst in der Farbe des Horizonts, ueber der Leere dichter und rosa.
+    let mist = mix(vec3<f32>(0.50, 0.34, 0.70), vec3<f32>(0.70, 0.42, 0.78), low);
     col = mix(col, mist, amount);
     col = mix(col, end_space(d), edge);
     if quality >= 1u {
