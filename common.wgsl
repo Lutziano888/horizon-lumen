@@ -316,36 +316,45 @@ fn stars(d: vec3<f32>, crowd: f32) -> vec3<f32> {
     return col;
 }
 
-// Richtung des schwarzen Lochs im End (auch das Licht im End kommt von dort).
-const END_HOLE: vec3<f32> = vec3<f32>(0.5028, 0.4224, -0.7542);
+// Richtung des schwarzen Lochs im End, hoch am Himmel (das Licht im End kommt von dort).
+const END_HOLE: vec3<f32> = vec3<f32>(0.4206, 0.7210, -0.5507);
 
-// Der Himmel im End: violetter Himmel, zum Horizont hin heller und rosa, ein feiner
-// Nebelschleier, Sterne und ein grosses schwarzes Loch mit leuchtendem Photonenring
-// und einer wirbelnden Akkretionsscheibe. Die Sterne um das Loch werden von seiner
-// Schwerkraft verbogen. Bildschirmfarben.
+// Senkrechte Lichtvorhaenge im End: violette Streifen, die vom Horizont aufsteigen,
+// jeder unterschiedlich hoch, und langsam wabern.
+fn end_curtains(d: vec3<f32>) -> f32 {
+    let az = atan2(d.x, d.z);
+    let ring = vec2<f32>(cos(az), sin(az));
+    let t = frame.time;
+    let broad = vnoise(vec3<f32>(ring * 9.0, t * 0.05));
+    let fine = vnoise(vec3<f32>(ring * 23.0, t * 0.08 + 5.0));
+    let streak = broad * broad * 0.6 + fine * fine * fine * 0.9;
+    let height = 0.18 + 0.45 * vnoise(vec3<f32>(ring * 5.0, t * 0.02 + 9.0));
+    return streak * exp(-max(d.y, 0.0) / height) * smoothstep(-0.2, 0.02, d.y);
+}
+
+// Der Himmel im End: dunkles Violett mit Sternen, vom Horizont steigen leuchtende
+// Lichtvorhaenge auf, und hoch oben haengt ein schwarzes Loch mit hellem Photonenring
+// und wirbelnder Akkretionsscheibe; die Sterne um das Loch biegt seine Schwerkraft.
+// Bildschirmfarben.
 fn end_space(d: vec3<f32>) -> vec3<f32> {
-    let zenith = vec3<f32>(0.20, 0.11, 0.42);
-    let horizon = vec3<f32>(0.62, 0.42, 0.82);
-    let below = vec3<f32>(0.78, 0.45, 0.82);
-    var col = mix(horizon, zenith, pow(clamp(d.y, 0.0, 1.0), 0.7));
+    let zenith = vec3<f32>(0.07, 0.03, 0.14);
+    let horizon = vec3<f32>(0.34, 0.17, 0.50);
+    let below = vec3<f32>(0.45, 0.22, 0.58);
+    var col = mix(horizon, zenith, pow(clamp(d.y, 0.0, 1.0), 0.6));
     if d.y < 0.0 {
         col = mix(horizon, below, clamp(-d.y * 3.0, 0.0, 1.0));
     }
-    // Feiner Nebelschleier.
-    let t = frame.time * 0.004;
-    let q = d * 2.2;
-    let warp = vec3<f32>(vnoise(q + vec3<f32>(t, 0.0, 0.0)), vnoise(q + vec3<f32>(5.2, 1.3, t)), vnoise(q + vec3<f32>(2.1, 7.7, 3.3))) - 0.5;
-    let p = d * 3.0 + warp * 1.6;
-    let n = vnoise(p) * 0.5 + vnoise(p * 2.1) * 0.3 + vnoise(p * 4.3) * 0.2;
-    col += vec3<f32>(0.35, 0.15, 0.4) * smoothstep(0.45, 0.85, n) * 0.35;
+    let curtain = end_curtains(d);
+    col += vec3<f32>(0.6, 0.28, 0.9) * curtain;
+    let star_fade = 1.0 - clamp(curtain * 2.0, 0.0, 1.0);
 
     // Ebene um das schwarze Loch.
     let u = normalize(cross(END_HOLE, vec3<f32>(0.0, 1.0, 0.0)));
     let v = cross(u, END_HOLE);
     let z = dot(d, END_HOLE);
-    let radius = 0.2;
+    let radius = 0.11;
     if z <= 0.05 {
-        return min(col + stars(d, 0.3) * 0.9, vec3<f32>(1.0));
+        return min(col + stars(d, 0.2) * 0.9 * star_fade, vec3<f32>(1.0));
     }
     let qp = vec2<f32>(dot(d, u), dot(d, v)) / z;
     let rc = length(qp) / radius;
@@ -353,7 +362,7 @@ fn end_space(d: vec3<f32>) -> vec3<f32> {
     let bend = radius * 1.5 / max(rc, 0.5);
     let dir2 = qp / max(length(qp), 1e-4);
     let lensed = normalize(d + (u * dir2.x + v * dir2.y) * bend);
-    col += stars(lensed, 0.3) * 0.9;
+    col += stars(lensed, 0.2) * 0.9 * star_fade;
 
     // Akkretionsscheibe: leicht gekippt, innen schneller als aussen, daraus die Spiralen.
     let e = vec2<f32>(0.8776 * qp.x + 0.4794 * qp.y, (-0.4794 * qp.x + 0.8776 * qp.y) / 0.82) / radius;
@@ -367,7 +376,7 @@ fn end_space(d: vec3<f32>) -> vec3<f32> {
     let hot = smoothstep(2.6, 1.3, r);
     col += mix(vec3<f32>(0.62, 0.42, 0.95), vec3<f32>(1.0, 0.93, 1.0), hot) * disk * 1.1;
     // Schein um das Loch und der helle Photonenring.
-    col += vec3<f32>(0.55, 0.4, 0.85) * exp(-max(rc - 1.0, 0.0) / 1.6) * 0.35;
+    col += vec3<f32>(0.55, 0.4, 0.85) * exp(-max(rc - 1.0, 0.0) / 1.6) * 0.3;
     col += vec3<f32>(1.0, 0.95, 1.0) * exp(-pow((rc - 1.05) / 0.06, 2.0)) * 1.2;
     // Das Loch selbst.
     col = mix(col, vec3<f32>(0.035, 0.025, 0.06), smoothstep(1.0, 0.96, rc));

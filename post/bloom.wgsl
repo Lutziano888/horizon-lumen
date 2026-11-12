@@ -16,10 +16,14 @@ fn bright(at: vec2<f32>) -> vec3<f32> {
     let size = vec2<i32>(frame.resolution);
     let s = surface_at(clamp(vec2<i32>(uv * frame.resolution), vec2<i32>(0), size - 1));
     if s.present {
-        return c * smoothstep(0.65, 1.0, lum) * smoothstep(0.0, 0.5, s.data - 1.0);
+        // Im End (dunkel) staerker: Endstaebe und Chorus-Blueten gluehen.
+        let boost = select(1.0, 1.8, frame.dimension == 1);
+        return c * smoothstep(select(0.65, 0.4, frame.dimension == 1), 1.0, lum) * smoothstep(0.0, 0.5, s.data - 1.0) * boost;
     }
-    // Wasser (Sonnenglanz), Glas, Mobs und Partikel: nur die ganz hellen Stellen.
-    return c * smoothstep(0.85, 1.0, lum);
+    // Wasser (Sonnenglanz), Glas, Mobs und Partikel: nur die ganz hellen Stellen. Im
+    // End leuchten auch Enderman-Augen und lila Partikel.
+    let start = select(0.85, 0.42, frame.dimension == 1);
+    return c * smoothstep(start, start + 0.15, lum) * select(1.0, 1.4, frame.dimension == 1);
 }
 
 fn post(input: PostInput) -> vec4<f32> {

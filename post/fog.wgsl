@@ -193,7 +193,7 @@ fn other_air(input: PostInput, d: vec3<f32>, dist: f32) -> vec3<f32> {
         low += exp(-max(pw.y - 45.0, 0.0) / 18.0) / 3.0;
     }
     if nether {
-        let density = 0.009 * haze * 2.0 * mix(0.4, 1.6, thick);
+        let density = 0.006 * haze * 2.0 * mix(0.4, 1.6, thick);
         let amount = (1.0 - exp(-min(dist, 400.0) * density)) * 0.75;
         col = mix(col, to_display(to_linear(frame.fog_color) * 1.8), amount);
         if quality >= 1u {
@@ -201,14 +201,15 @@ fn other_air(input: PostInput, d: vec3<f32>, dist: f32) -> vec3<f32> {
         }
         return col;
     }
-    // End: in der Ferne in den Weltraum uebergehen.
+    // End: duenner Dunst (man soll weit sehen), dichter nur dicht ueber der Leere,
+    // ganz am Ende der Sichtweite geht das Gelaende in den Himmel ueber.
     let flat_dist = max(length(d.xz * dist), abs(d.y * dist));
     let end = max(frame.fog_end, 16.0);
-    let edge = smoothstep(end * 0.6, end * 0.98, flat_dist);
-    let density = (0.003 + low * 0.010) * haze * 2.0 * mix(0.5, 1.5, thick);
-    let amount = (1.0 - exp(-min(dist, 400.0) * density)) * 0.8;
-    // Dunst in der Farbe des Horizonts, ueber der Leere dichter und rosa.
-    let mist = mix(vec3<f32>(0.50, 0.34, 0.70), vec3<f32>(0.70, 0.42, 0.78), low);
+    let edge = smoothstep(end * 0.85, end * 0.99, flat_dist);
+    let density = (0.0012 + low * 0.006) * haze * 2.0 * mix(0.5, 1.5, thick);
+    let amount = (1.0 - exp(-min(dist, 600.0) * density)) * 0.7;
+    // Dunst in der Farbe des Horizonts, ueber der Leere dichter.
+    let mist = mix(vec3<f32>(0.30, 0.15, 0.45), vec3<f32>(0.42, 0.20, 0.55), low);
     col = mix(col, mist, amount);
     col = mix(col, end_space(d), edge);
     if quality >= 1u {
@@ -249,7 +250,8 @@ fn post(input: PostInput) -> vec4<f32> {
         var air = atmosphere(vec3<f32>(d.x, max(d.y, 0.0) * 0.35 + 0.02, d.z));
         air = mix(air, air * vec3<f32>(0.92, 0.97, 1.05), 0.5);
         let low_air = exp(-max(world_y - 70.0, 0.0) / 140.0);
-        var amount = 1.0 - exp(-max(dist - 20.0, 0.0) * 0.0042 * haze * mix(0.6, 1.0, low_air));
+        // Duenn genug, dass man bei grosser Sichtweite auch weit sieht.
+        var amount = 1.0 - exp(-max(dist - 20.0, 0.0) * 0.0025 * haze * mix(0.6, 1.0, low_air));
         amount = min(amount, 0.8) * (1.0 - border) * outside * (1.0 + frame.rain * 0.5);
         col = mix(col, air, clamp(amount, 0.0, 0.9));
     }

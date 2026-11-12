@@ -367,12 +367,13 @@ fn other_dimension(input: MaterialInput, base: vec4<f32>, dist: f32) -> Surface 
     let glow = base.rgb * input.emission * 0.6;
     var lit = to_linear(base.rgb * light + glow) + input.colored_light * to_linear(base.rgb) * 1.5;
     if frame.dimension == 1 {
-        // Im End: helles, violettes Licht vom schwarzen Loch (seine leuchtende Scheibe),
-        // dazu ein dunkles Umgebungslicht. So bekommen Endstein und Saeulen Form und Tiefe.
+        // Im End: violettes Licht vom schwarzen Loch (seine leuchtende Scheibe), dazu ein
+        // dunkles Umgebungslicht. So bekommen Endstein und Saeulen Form und Tiefe.
         let ndl = max(dot(input.normal, END_HOLE), 0.0);
         let up = input.normal.y * 0.5 + 0.5;
-        let ambient = mix(vec3<f32>(0.07, 0.05, 0.13), vec3<f32>(0.20, 0.15, 0.32), up);
-        let key = vec3<f32>(0.85, 0.75, 1.0) * ndl * 0.85;
+        // Gedaempft: dunkle Formen vor dem leuchtenden Himmel wirken am staerksten.
+        let ambient = mix(vec3<f32>(0.04, 0.025, 0.08), vec3<f32>(0.12, 0.08, 0.20), up);
+        let key = vec3<f32>(0.80, 0.68, 1.0) * ndl * 0.5;
         lit = to_linear(base.rgb) * (ambient + key) + to_linear(base.rgb * light * 0.3 + glow)
             + input.colored_light * to_linear(base.rgb) * 1.5;
     }
