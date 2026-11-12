@@ -148,8 +148,9 @@ fn calm_entities(input: PostInput, col: vec3<f32>) -> vec3<f32> {
 
 override ambient_blue_fog: f32 = 0.45;
 
-// Glut im Nether: kleine gluehende Funken, die langsam aufsteigen und flackern.
-fn embers(d: vec3<f32>, max_dist: f32) -> f32 {
+// Schwebende Funken: im Nether gluehende Glut, die aufsteigt und flackert, im End
+// violette Lichtpunkte, die langsam treiben.
+fn motes(d: vec3<f32>, max_dist: f32, rise: f32, rarity: f32) -> f32 {
     var sum = 0.0;
     let cam = frame.camera_position;
     for (var k = 0; k < 5; k++) {
@@ -157,42 +158,60 @@ fn embers(d: vec3<f32>, max_dist: f32) -> f32 {
         if r > max_dist {
             break;
         }
-        let pw = cam + d * r - vec3<f32>(frame.time * 0.15, -frame.time * 0.45, 0.0);
+        let pw = cam + d * r - vec3<f32>(frame.time * 0.15, -frame.time * rise, frame.time * 0.05);
         let cell = floor(pw * 0.5);
         let ci = vec3<i32>(cell) + vec3<i32>(0, 0, k * 31);
         let spot = (cell + vec3<f32>(hash3(ci), hash3(ci + vec3<i32>(7, 0, 0)), hash3(ci + vec3<i32>(0, 9, 0)))) / 0.5;
         let near = length(pw - spot);
         let flicker = 0.6 + 0.4 * sin(frame.time * 6.0 + hash3(ci + vec3<i32>(2, 3, 4)) * 30.0);
         let size = 0.03 + 0.03 * hash3(ci + vec3<i32>(0, 0, 11));
-        sum += smoothstep(size, 0.0, near) * step(0.7, hash3(ci + vec3<i32>(3, 5, 1))) * flicker / (1.0 + r * 0.15);
+        sum += smoothstep(size, 0.0, near) * step(rarity, hash3(ci + vec3<i32>(3, 5, 1))) * flicker / (1.0 + r * 0.15);
     }
     return sum;
 }
 
-// Nether und End: Dunst in der Farbe der Dimension, der durch die Luft treibt
-// (drei Proben entlang des Blicks), im Nether dazu Glut in der Luft.
+// Nether: roter Dunst, der durch die Luft treibt (drei Proben entlang des Blicks),
+// und Glut. End: der Weltraum als Himmel, violetter Dunst, der sich unten ueber der
+// Leere sammelt, das Gelaende blendet in der Ferne in den Weltraum, dazu Lichtpunkte.
 fn other_air(input: PostInput, d: vec3<f32>, dist: f32) -> vec3<f32> {
     var col = input.color.rgb;
     if frame.eye_in != 0u || frame.blindness > 0.0 || frame.darkness > 0.0 {
         return col;
     }
     let nether = frame.dimension == -1;
+    let sky_pixel = input.depth == 0.0;
+    if !nether && sky_pixel {
+        return end_space(d);
+    }
     let reach = min(dist, 64.0);
     let cam = frame.camera_position;
     var thick = 0.0;
+    var low = 0.0;
     for (var i = 0; i < 3; i++) {
         let pw = cam + d * (reach * (f32(i) + 0.5) / 3.0);
         thick += vnoise(pw * 0.045 + vec3<f32>(frame.time * 0.03, frame.time * 0.05, 0.0)) / 3.0;
+        low += exp(-max(pw.y - 45.0, 0.0) / 18.0) / 3.0;
     }
-    let density = select(0.0035, 0.009, nether) * haze * 2.0 * mix(0.4, 1.6, thick);
-    let amount = (1.0 - exp(-min(dist, 400.0) * density)) * 0.75;
-    var air = to_linear(frame.fog_color) * select(1.3, 1.8, nether);
-    if !nether {
-        air = mix(air, vec3<f32>(0.06, 0.03, 0.10), 0.5);
+    if nether {
+        let density = 0.009 * haze * 2.0 * mix(0.4, 1.6, thick);
+        let amount = (1.0 - exp(-min(dist, 400.0) * density)) * 0.75;
+        col = mix(col, to_display(to_linear(frame.fog_color) * 1.8), amount);
+        if quality >= 1u {
+            col += vec3<f32>(1.0, 0.42, 0.10) * motes(d, dist, 0.45, 0.7) * 0.9;
+        }
+        return col;
     }
-    col = mix(col, to_display(air), amount);
-    if nether && quality >= 1u {
-        col += vec3<f32>(1.0, 0.42, 0.10) * embers(d, dist) * 0.9;
+    // End: in der Ferne in den Weltraum uebergehen.
+    let flat_dist = max(length(d.xz * dist), abs(d.y * dist));
+    let end = max(frame.fog_end, 16.0);
+    let edge = smoothstep(end * 0.6, end * 0.98, flat_dist);
+    let density = (0.004 + low * 0.012) * haze * 2.0 * mix(0.5, 1.5, thick);
+    let amount = (1.0 - exp(-min(dist, 400.0) * density)) * 0.8;
+    let mist = mix(vec3<f32>(0.10, 0.05, 0.17), vec3<f32>(0.22, 0.10, 0.30), low);
+    col = mix(col, mist, amount);
+    col = mix(col, end_space(d), edge);
+    if quality >= 1u {
+        col += vec3<f32>(0.75, 0.55, 1.0) * motes(d, dist, 0.08, 0.8) * 0.8;
     }
     return col;
 }

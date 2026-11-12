@@ -288,3 +288,52 @@ fn caustics(world: vec3<f32>) -> f32 {
     }
     return 0.5 + 0.8 * sum;
 }
+
+// Sterne: einer pro Zelle (wenn ueberhaupt), mit eigener Groesse, Farbe und Funkeln.
+fn stars(d: vec3<f32>, crowd: f32) -> vec3<f32> {
+    var col = vec3<f32>(0.0);
+    for (var layer = 0; layer < 2; layer++) {
+        let scale = select(140.0, 200.0, layer == 1);
+        let p = d * scale;
+        let cell = floor(p);
+        let ci = vec3<i32>(cell) + vec3<i32>(layer * 977, 0, 0);
+        let pick = hash3(ci);
+        // Im Band der Milchstrasse stehen mehr Sterne.
+        let rare = select(0.972, 0.985, layer == 1) - crowd * 0.03;
+        if pick > rare {
+            let spot = cell + vec3<f32>(hash3(ci + vec3<i32>(1, 7, 3)), hash3(ci + vec3<i32>(5, 2, 9)), hash3(ci + vec3<i32>(8, 4, 1))) * 0.4 + 0.3;
+            let dist = length(p - spot);
+            // Etwa 0,08 bis 0,15 Grad: ein bis zwei Pixel, damit nichts flimmert.
+            let size = mix(0.0014, 0.0026, hash3(ci + vec3<i32>(2, 2, 2))) * scale;
+            let shine = smoothstep(size, 0.0, dist);
+            let bright = pow((pick - rare) / (1.0 - rare), 1.5) * select(1.0, 0.6, layer == 1);
+            let twinkle = 0.7 + 0.3 * sin(frame.time * (2.0 + 3.0 * hash3(ci + vec3<i32>(4, 1, 6))) + pick * 40.0);
+            let temp = hash3(ci + vec3<i32>(9, 9, 9));
+            let tint = mix(vec3<f32>(0.75, 0.85, 1.0), vec3<f32>(1.0, 0.85, 0.65), temp);
+            col += tint * shine * bright * twinkle * 2.2;
+        }
+    }
+    return col;
+}
+
+// Der Himmel im End: tiefer Weltraum mit einem grossen, langsam wabernden Nebel in
+// Magenta und Blau, hellen Kernen, dunklen Staubbahnen und vielen Sternen. Unten
+// leuchtet die Leere violett. Bildschirmfarben.
+fn end_space(d: vec3<f32>) -> vec3<f32> {
+    let t = frame.time * 0.004;
+    let q = d * 2.2;
+    let warp = vec3<f32>(vnoise(q + vec3<f32>(t, 0.0, 0.0)), vnoise(q + vec3<f32>(5.2, 1.3, t)), vnoise(q + vec3<f32>(2.1, 7.7, 3.3))) - 0.5;
+    let p = d * 3.0 + warp * 1.6;
+    let n = vnoise(p) * 0.5 + vnoise(p * 2.1) * 0.3 + vnoise(p * 4.3) * 0.2;
+    let off = dot(d, normalize(vec3<f32>(0.35, 0.2, 0.92)));
+    let band = exp(-off * off * 2.0);
+    let cloud = smoothstep(0.36, 0.78, n) * (0.4 + 0.6 * band);
+    let hue = vnoise(p * 0.7 + 9.0);
+    let tint = mix(vec3<f32>(0.5, 0.12, 0.55), vec3<f32>(0.15, 0.25, 0.65), hue);
+    let core = smoothstep(0.58, 0.86, n) * band;
+    var col = vec3<f32>(0.012, 0.006, 0.025) + tint * cloud * 1.25 + vec3<f32>(0.95, 0.65, 1.0) * core * 0.55;
+    col *= 1.0 - smoothstep(0.55, 0.8, vnoise(p * 1.7 + 3.0)) * 0.55 * band;
+    col += stars(d, band) * 0.9;
+    col += vec3<f32>(0.25, 0.08, 0.35) * smoothstep(0.0, -0.6, d.y) * 0.5;
+    return min(col, vec3<f32>(1.0));
+}

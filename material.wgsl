@@ -130,6 +130,10 @@ fn apply_fog(color: vec3<f32>, pos: vec3<f32>, dist: f32) -> vec3<f32> {
     if frame.dimension == 0 && camera_underwater() && frame.blindness <= 0.0 && frame.darkness <= 0.0 {
         return color;
     }
+    // Im End blendet post/fog.wgsl das Gelaende in den Weltraum.
+    if frame.dimension == 1 && frame.eye_in == 0u && frame.blindness <= 0.0 && frame.darkness <= 0.0 {
+        return color;
+    }
     if frame.dimension != 0 || frame.eye_in != 0u || frame.blindness > 0.0 || frame.darkness > 0.0 {
         let f = clamp((dist - frame.fog_start) / max(frame.fog_end - frame.fog_start, 1e-3), 0.0, 1.0);
         return mix(color, frame.fog_color, f);
@@ -148,11 +152,6 @@ fn apply_fog(color: vec3<f32>, pos: vec3<f32>, dist: f32) -> vec3<f32> {
 
 // --- Wasser ---
 
-// Hoehe der Wellen an einer Stelle (0..1): mehrere Wellenzuege mit weichem Profil
-// (quadrierter Sinus: runde Kaemme, flache Taeler), jeder etwas gedreht und laenger,
-// und jeder mit einer eigenen, langsam wandernden Rausch-Verschiebung der Phase. So
-// gibt es keine geraden Linien und kein Muster, das sich wiederholt. Dazu ruhige und
-// bewegte Zonen ueber grosse Flaechen.
 // Wasseroberflaeche: weiche, zufaellige Huegel statt Wellenzuegen. Mehrere Lagen
 // Gradientenrauschen, jede in eine andere Richtung gedreht und treibend, die feinen
 // in der Ferne ausgeblendet. So entstehen nirgends Linien oder Muster, auch nicht
@@ -366,7 +365,18 @@ fn other_dimension(input: MaterialInput, base: vec4<f32>, dist: f32) -> Surface 
         }
     }
     let glow = base.rgb * input.emission * 0.6;
-    let lit = to_linear(base.rgb * light + glow) + input.colored_light * to_linear(base.rgb) * 1.5;
+    var lit = to_linear(base.rgb * light + glow) + input.colored_light * to_linear(base.rgb) * 1.5;
+    if frame.dimension == 1 {
+        // Im End: kuehles violettes Licht aus dem Nebel von schraeg oben, dazu ein
+        // dunkles Umgebungslicht. So bekommen Endstein und Saeulen Form und Tiefe.
+        let key_dir = normalize(vec3<f32>(-0.35, 0.8, 0.45));
+        let ndl = max(dot(input.normal, key_dir), 0.0);
+        let up = input.normal.y * 0.5 + 0.5;
+        let ambient = mix(vec3<f32>(0.07, 0.05, 0.12), vec3<f32>(0.17, 0.13, 0.27), up);
+        let key = vec3<f32>(0.75, 0.62, 0.95) * ndl * 0.55;
+        lit = to_linear(base.rgb) * (ambient + key) + to_linear(base.rgb * light * 0.3 + glow)
+            + input.colored_light * to_linear(base.rgb) * 1.5;
+    }
     // Fuer post/bloom.wgsl: Gelaende, und wie stark es selbst leuchtet.
     set_surface(input.normal, 0.0, 1.0 + clamp(input.emission, 0.0, 1.0));
     let color = apply_fog(encode(lit), input.position, dist);
@@ -520,9 +530,11 @@ fn material(input: MaterialInput) -> Surface {
         if id == M_ICE { gloss = 0.35; }
         if id == M_GLASS { gloss = 0.45; }
         if id == M_POLISHED { gloss = 0.15; }
-        var sheen = (torch + held) * (gloss + fres * gloss * 2.5);
+        // Nur ein Hauch, vor allem am Rand: sonst faerbt ein Licht (etwa ein Netherportal)
+        // die ganze Flaeche ein.
+        var sheen = (torch + held) * (gloss * 0.2 + fres * gloss * 1.5);
         if id == M_METAL {
-            sheen = (torch + held) * albedo * 1.6 * (0.5 + fres);
+            sheen = (torch + held) * albedo * (0.3 + fres * 0.8);
         }
         // Mond und Nachthimmel: ein ruhiger Schimmer, damit es nachts nicht matt wirkt.
         let night_sky = vec3<f32>(0.010, 0.014, 0.030) * (1.0 - daylight()) * smoothstep(0.5, 0.95, sky);

@@ -407,7 +407,7 @@ sprites = ["block/snow", "block/powder_snow"]
 id = 13
 sprites = [
     "block/polished_*", "block/smooth_stone*", "block/smooth_quartz", "block/quartz_block*",
-    "block/quartz_pillar*", "block/*_glazed_terracotta", "block/obsidian", "block/crying_obsidian",
+    "block/quartz_pillar*", "block/*_glazed_terracotta",
     "block/prismarine_bricks", "block/dark_prismarine", "block/calcite",
 ]
 
