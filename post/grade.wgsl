@@ -4,8 +4,46 @@
 override exposure: f32 = 1.0;
 override saturation: f32 = 1.0;
 override vignette: bool = true;
+override anti_aliasing: bool = true;
+
+fn color_at(uv: vec2<f32>) -> vec3<f32> {
+    return textureSampleLevel(previous, linear_sampler, uv, 0.0).rgb;
+}
+
+// Kantenglaettung: Horizons eigene (TAA/FXAA) laeuft nicht, solange ein Shader das
+// Bild zeichnet. Hier eine schnelle, eigene: an Kanten wird entlang der Kante
+// gemittelt, flaechige Stellen bleiben scharf.
+fn smooth_edges(uv: vec2<f32>, center: vec3<f32>) -> vec3<f32> {
+    let px = 1.0 / frame.resolution;
+    let nw = luminance(color_at(uv + vec2<f32>(-1.0, -1.0) * px));
+    let ne = luminance(color_at(uv + vec2<f32>(1.0, -1.0) * px));
+    let sw = luminance(color_at(uv + vec2<f32>(-1.0, 1.0) * px));
+    let se = luminance(color_at(uv + vec2<f32>(1.0, 1.0) * px));
+    let m = luminance(center);
+    let lo = min(m, min(min(nw, ne), min(sw, se)));
+    let hi = max(m, max(max(nw, ne), max(sw, se)));
+    if hi - lo < max(0.04, hi * 0.15) {
+        return center;
+    }
+    var dir = vec2<f32>(-((nw + ne) - (sw + se)), (nw + sw) - (ne + se));
+    let reduce = max((nw + ne + sw + se) * 0.03125, 1.0 / 128.0);
+    let scale = 1.0 / (min(abs(dir.x), abs(dir.y)) + reduce);
+    dir = clamp(dir * scale, vec2<f32>(-6.0), vec2<f32>(6.0)) * px;
+    let a = 0.5 * (color_at(uv - dir / 6.0) + color_at(uv + dir / 6.0));
+    let b = a * 0.5 + 0.25 * (color_at(uv - dir * 0.5) + color_at(uv + dir * 0.5));
+    let lb = luminance(b);
+    return select(b, a, lb < lo || lb > hi);
+}
 
 fn post(input: PostInput) -> vec4<f32> {
+    // Bild aus der Kette, geglaettet, dazu Sonnenstrahlen und Bloom (halbe Aufloesung).
+    var base = color_at(input.uv);
+    if anti_aliasing {
+        base = smooth_edges(input.uv, base);
+    }
+    base += textureSampleLevel(ray_tex, linear_sampler, input.uv, 0.0).rgb;
+    base += textureSampleLevel(glow_tex, linear_sampler, input.uv, 0.0).rgb;
+
     // Unter Tage passt sich das Auge etwas an (wie bei Photon), langsam ueber eye_light_smooth.
     // Nur langsam heller werden, wenn es dunkel wird; wird es hell (aus der Hoehle
     // oder aus dem Wasser auftauchen), sofort zurueck, sonst blendet es kurz.
@@ -17,7 +55,7 @@ fn post(input: PostInput) -> vec4<f32> {
         underground = 0.0;
     }
     let adapt = mix(1.0, 1.35, underground * overworld());
-    var lin = pow(max(input.color.rgb, vec3<f32>(0.0)), vec3<f32>(2.2)) * exposure * adapt;
+    var lin = pow(max(base, vec3<f32>(0.0)), vec3<f32>(2.2)) * exposure * adapt;
 
     // Leicht warm, morgens und abends waermer.
     lin *= mix(vec3<f32>(1.03, 1.0, 0.95), vec3<f32>(1.10, 1.0, 0.82), sun_low() * daylight());

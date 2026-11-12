@@ -153,77 +153,70 @@ fn apply_fog(color: vec3<f32>, pos: vec3<f32>, dist: f32) -> vec3<f32> {
 // und jeder mit einer eigenen, langsam wandernden Rausch-Verschiebung der Phase. So
 // gibt es keine geraden Linien und kein Muster, das sich wiederholt. Dazu ruhige und
 // bewegte Zonen ueber grosse Flaechen.
-fn wave_train(xz: vec2<f32>, t: f32, detail: f32, start: vec2<f32>, seed: f32) -> f32 {
-    var dir = start;
-    let turn = mat2x2<f32>(-0.7374, 0.6755, -0.6755, -0.7374);
+// Wasseroberflaeche: weiche, zufaellige Huegel statt Wellenzuegen. Mehrere Lagen
+// Gradientenrauschen, jede in eine andere Richtung gedreht und treibend, die feinen
+// in der Ferne ausgeblendet. So entstehen nirgends Linien oder Muster, auch nicht
+// von weit oben. Gibt (Hoehe, dh/dx, dh/dz) zurueck, die Steigung exakt.
+fn water_bumps(xz: vec2<f32>, t: f32, detail: f32) -> vec3<f32> {
+    // Jede Lage um 1,2 rad weitergedreht.
+    let turn = mat2x2<f32>(0.3624, 0.9320, -0.9320, 0.3624);
+    var dir = vec2<f32>(1.0, 0.0);
+    var freq = 0.3;
     var amp = 1.0;
-    var wl = 3.5;
     var sum = 0.0;
+    var grad = vec2<f32>(0.0);
     var norm = 0.0;
-    // Feineres Rauschen: biegt auch die grossen Wellen, so entstehen keine geraden,
-    // parallelen Linien quer uebers Wasser.
-    var noise_pos = (xz + vec2<f32>(0.0, t * 0.25)) * 0.12;
-    // Niedrig 3, Mittel 4, sonst 5 Wellen (die feinsten zuerst weg).
+    // Niedrig 3, Mittel 4, sonst 5 Lagen (die feinsten zuerst weg).
     let count = by_quality(3, 4, 5, 5);
     for (var i = 0; i < count; i++) {
-        let n = vnoise(vec3<f32>(noise_pos, f32(i) * 7.3 + seed)) * 1.6;
-        let k = 6.2832 / wl;
-        let x = sqrt(9.8 * k) * t - k * (dot(dir, xz) + n);
-        let s = sin(x) * 0.5 + 0.5;
-        let fade = select(1.0, detail, i >= 2);
-        // Die laengste Welle nicht dominieren lassen.
-        let a = amp * select(1.0, 0.55, i == 0);
-        sum += s * s * a * fade;
-        norm += a;
-        amp *= 0.62;
-        wl /= 1.7;
+        let c = dir.x;
+        let s = dir.y;
+        let u = (c * xz.x + s * xz.y) * freq;
+        let w = (-s * xz.x + c * xz.y) * freq * 1.15;
+        let drift = 0.35 / sqrt(freq);
+        let nd = gnoise_d(vec3<f32>(u + t * drift, w + t * drift * 0.3, f32(i) * 13.7 + t * 0.25));
+        let a = amp * select(1.0, detail, i >= 2);
+        sum += nd.x * a;
+        grad += a * freq * vec2<f32>(nd.y * c - nd.z * 1.15 * s, nd.y * s + nd.z * 1.15 * c);
+        norm += amp;
+        amp *= 0.4;
+        freq *= 1.95;
         dir = turn * dir;
-        noise_pos *= 1.6;
     }
-    return sum / norm;
+    // Ruhige und bewegte Zonen ueber die Flaeche.
+    let zn = vnoise_d(vec3<f32>(xz * 0.012 + vec2<f32>(0.0, t * 0.0012), 3.0));
+    let zraw = zn.x * 2.0 - 0.3;
+    let zones = max(0.45, zraw);
+    let gz = select(vec2<f32>(0.0), zn.yz * 0.024, zraw > 0.45);
+    let h = sum / norm;
+    return vec3<f32>(h * zones, grad / norm * zones + h * gz);
 }
 
-fn wave_height(xz: vec2<f32>, t: f32, detail: f32) -> f32 {
-    // Zwei Wellenfelder aus verschiedenen Richtungen, ueber die Flaeche gemischt,
-    // dazu ruhige und bewegte Zonen.
-    let zones = max(0.35, vnoise(vec3<f32>(xz * 0.012 + vec2<f32>(0.0, t * 0.0012), 3.0)) * 2.0 - 0.4);
-    let a = wave_train(xz, t, detail, vec2<f32>(0.866, 0.5), 0.0);
-    // Niedrig: nur ein Wellenfeld.
-    if quality == 0u {
-        return a * zones;
+// Regentropfen: Ringe, die sich ausbreiten (Steigung). Fuer Wasser und Pfuetzen.
+fn rain_rings(xz: vec2<f32>) -> vec2<f32> {
+    var g = vec2<f32>(0.0);
+    let cell = floor(xz * 1.5);
+    for (var j = 0; j < 4; j++) {
+        let off = vec2<f32>(f32(j % 2), f32(j / 2));
+        let c = cell + off;
+        let h = hash3(vec3<i32>(vec2<i32>(c), 7));
+        let life = fract(frame.time * 0.9 + h);
+        let center = (c + vec2<f32>(hash3(vec3<i32>(vec2<i32>(c), 3)), hash3(vec3<i32>(vec2<i32>(c), 5)))) / 1.5;
+        let dv = xz - center;
+        let r = length(dv);
+        let ring = sin((r - life * 0.6) * 40.0) * smoothstep(0.12, 0.0, abs(r - life * 0.6)) * (1.0 - life);
+        g += dv / max(r, 1e-3) * ring * 0.08;
     }
-    let m = clamp((vnoise(vec3<f32>(xz * 0.008 + vec2<f32>(0.0, t * 0.01), 11.0)) - 0.5) * 3.0 + 0.5, 0.0, 1.0);
-    let b = wave_train(xz, t, detail, vec2<f32>(-0.34, 0.94), 40.0);
-    return mix(a, b, m) * zones;
+    return g;
 }
 
-// Steigung der Wellen (dh/dx, dh/dz) aus der Hoehe, dazu Kraeuseln und Regenringe.
+// Steigung der Wasseroberflaeche (dh/dx, dh/dz), bei Regen bewegter und mit Ringen.
 fn wave_slope(xz: vec2<f32>, detail: f32) -> vec2<f32> {
     let t = frame.time * 0.5 * (1.0 + frame.rain * 0.4 + frame.thunder * 0.4);
-    let e = 0.1;
-    let h0 = wave_height(xz, t, detail);
-    let hx = wave_height(xz + vec2<f32>(e, 0.0), t, detail);
-    let hz = wave_height(xz + vec2<f32>(0.0, e), t, detail);
-    let strength = 0.11 * (1.0 + frame.rain * 0.6);
-    var g = vec2<f32>(hx - h0, hz - h0) / e * strength;
-    // Kraeuseln.
-    let q = vec3<f32>(xz.x * 2.3 + t * 0.8, t * 0.6, xz.y * 2.3 - t * 0.7);
-    let n0 = vnoise(q);
-    g += vec2<f32>(vnoise(q + vec3<f32>(0.12, 0.0, 0.0)) - n0, vnoise(q + vec3<f32>(0.0, 0.0, 0.12)) - n0) / 0.12 * 0.012 * detail;
-    // Regentropfen: Ringe, die sich ausbreiten.
+    let strength = 0.7 * (1.0 + frame.rain * 0.6);
+    var g = water_bumps(xz, t, detail).yz * strength;
     if quality >= 1u && frame.rain > 0.05 && detail > 0.2 {
-        let cell = floor(xz * 1.5);
-        for (var j = 0; j < 4; j++) {
-            let off = vec2<f32>(f32(j % 2), f32(j / 2));
-            let c = cell + off;
-            let h = hash3(vec3<i32>(vec2<i32>(c), 7));
-            let life = fract(frame.time * 0.9 + h);
-            let center = (c + vec2<f32>(hash3(vec3<i32>(vec2<i32>(c), 3)), hash3(vec3<i32>(vec2<i32>(c), 5)))) / 1.5;
-            let dv = xz - center;
-            let r = length(dv);
-            let ring = sin((r - life * 0.6) * 40.0) * smoothstep(0.12, 0.0, abs(r - life * 0.6)) * (1.0 - life);
-            g += dv / max(r, 1e-3) * ring * 0.08 * frame.rain * detail;
-        }
+        g += rain_rings(xz) * frame.rain * detail;
     }
     return g;
 }
@@ -336,6 +329,12 @@ fn shade_water(input: MaterialInput, pos: vec3<f32>, dist: f32, view: vec3<f32>,
         let sparkle_cell = vec3<i32>(vec3<f32>(floor(world.x * 6.0), floor(frame.time * 4.0), floor(world.z * 6.0)));
         glint += step(0.993, hash3(sparkle_cell)) * pow(nh, 200.0) * 18.0 * exp(-dist / 40.0);
     }
+    // Mondpfad: nachts ein breiter, funkelnder Streifen zum Mond hin.
+    let moon_on = moon_visible() * (1.0 - sun_visible());
+    if moon_on > 0.0 {
+        let hm = normalize(frame.moon_direction - view);
+        glint += pow(max(dot(n, hm), 0.0), 160.0) * 7.0 * fresnel * moon_on;
+    }
     let spec = direct * shadow * glint;
 
     return mix(inside, refl, fresnel) + spec;
@@ -343,7 +342,21 @@ fn shade_water(input: MaterialInput, pos: vec3<f32>, dist: f32, view: vec3<f32>,
 
 // --- Andere Dimensionen: Vanilla mit etwas mehr Kontrast ---
 
+// Lava: leuchtet selbst, mit langsam wandernden heisseren Stellen.
+fn lava_glow(albedo: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
+    let flow = vnoise(vec3<f32>(world.xz * 0.45, frame.time * 0.12)) * 0.6
+        + vnoise(vec3<f32>(world.xz * 1.3 + vec2<f32>(frame.time * 0.08, 0.0), 5.0)) * 0.4;
+    let hot = smoothstep(0.45, 0.85, flow);
+    let warm = mix(albedo, albedo * vec3<f32>(1.15, 0.92, 0.7), 0.35);
+    return to_linear(warm) * (2.1 + hot * 1.1) + vec3<f32>(0.25, 0.08, 0.0) * hot;
+}
+
 fn other_dimension(input: MaterialInput, base: vec4<f32>, dist: f32) -> Surface {
+    if input.fluid == 2u {
+        let lava = lava_glow(base.rgb, input.position + frame.camera_position);
+        set_surface(input.normal, 0.0, 2.0);
+        return Surface(vec4<f32>(apply_fog(encode(lava), input.position, dist), base.a));
+    }
     var light = pow(input.lightmap, vec3<f32>(1.15));
     if colored_lights {
         let c = block_light_color(input.position);
@@ -377,8 +390,8 @@ fn material(input: MaterialInput) -> Surface {
         return Surface(vec4<f32>(apply_fog(encode(water), pos, dist), 1.0));
     }
     if input.fluid == 2u {
-        // Lava leuchtet selbst.
-        let lava = to_linear(base.rgb) * 2.4;
+        // Lava leuchtet selbst, mit langsam wandernden heisseren Stellen.
+        let lava = lava_glow(base.rgb, world);
         set_surface(input.normal, 0.0, 2.0);
         return Surface(vec4<f32>(apply_fog(encode(lava), pos, dist), base.a));
     }
@@ -450,9 +463,74 @@ fn material(input: MaterialInput) -> Surface {
     // das nicht), und wie stark es selbst leuchtet.
     set_surface(n, 0.0, 1.0 + clamp(input.emission, 0.0, 1.0));
     if wet > 0.01 {
-        let r = reflect(view, n);
-        let f = 0.02 + 0.98 * pow(1.0 - max(dot(n, -view), 0.0), 5.0);
-        lit += to_linear(atmosphere(vec3<f32>(r.x, max(r.y, 0.01), r.z))) * f * wet * 0.6;
+        // Pfuetzen: auf flachem Boden sammelt sich Wasser, glatt wie ein Spiegel, mit
+        // Regenringen. Sie wachsen mit der Naesse und trocknen wieder ein.
+        var wn = n;
+        var mirror = 0.6;
+        if n.y > 0.9 {
+            let pn = vnoise(vec3<f32>(world.xz * 0.16, 2.0)) * 0.7 + vnoise(vec3<f32>(world.xz * 0.6, 4.0)) * 0.3;
+            let puddle = smoothstep(0.60, 0.64, pn + (frame.wetness - 1.0) * 0.25) * wet;
+            if puddle > 0.01 {
+                lit *= mix(1.0, 0.55, puddle);
+                if frame.rain > 0.05 && dist < 40.0 {
+                    let g = rain_rings(world.xz) * frame.rain * 1.5;
+                    wn = normalize(vec3<f32>(-g.x * puddle, 1.0, -g.y * puddle));
+                }
+                mirror = mix(0.6, 1.0, puddle);
+                let h = normalize(l - view);
+                lit += sun * smoothstep(0.0, 0.1, l.y) * pow(max(dot(wn, h), 0.0), 900.0) * 6.0 * puddle;
+            }
+        }
+        let r = reflect(view, wn);
+        let f = 0.02 + 0.98 * pow(1.0 - max(dot(wn, -view), 0.0), 5.0);
+        lit += to_linear(atmosphere(vec3<f32>(r.x, max(r.y, 0.01), r.z))) * f * wet * mirror;
     }
-    return Surface(vec4<f32>(apply_fog(encode(lit), pos, dist), base.a));
+
+    // Glaenzende Bloecke: Eis, Metall, Schnee, polierter Stein und Glas.
+    var alpha = base.a;
+    if id >= M_ICE && id <= M_GLASS {
+        let h = normalize(l - view);
+        let nh = max(dot(n, h), 0.0);
+        let nv = max(dot(n, -view), 0.0);
+        let fres = 0.04 + 0.96 * pow(1.0 - nv, 5.0);
+        let r = reflect(view, n);
+        let lit_side = sun * smoothstep(0.0, 0.1, dot(n, l));
+        let sky_refl = to_linear(atmosphere(vec3<f32>(r.x, max(r.y, 0.01), r.z))) * smoothstep(0.5, 0.95, sky);
+        var spec = vec3<f32>(0.0);
+        if id == M_ICE {
+            spec = lit_side * (pow(nh, 500.0) * 4.0 + pow(nh, 60.0) * 0.25) + sky_refl * (0.08 + fres * 0.6);
+        } else if id == M_METAL {
+            // Metall spiegelt in seiner eigenen Farbe.
+            let metal = mix(albedo * 2.2, vec3<f32>(1.0), fres);
+            spec = metal * (lit_side * (pow(nh, 90.0) * 1.4 + pow(nh, 12.0) * 0.08) + sky_refl * 0.22);
+        } else if id == M_SNOW {
+            // Schnee glitzert: einzelne Kristalle blitzen in der Sonne.
+            let cell = vec3<i32>(floor(world * 14.0));
+            let flake = step(0.996, hash3(cell)) * pow(nh, 24.0) * 5.0 * exp(-dist / 30.0);
+            spec = lit_side * (pow(nh, 40.0) * 0.06 + flake);
+        } else if id == M_POLISHED {
+            spec = lit_side * pow(nh, 220.0) * 0.6 * fres * 4.0 + sky_refl * fres * 0.15;
+        } else {
+            spec = lit_side * (pow(nh, 900.0) * 6.0 + pow(nh, 80.0) * 0.3) + sky_refl * (0.06 + fres * 0.7);
+            alpha = clamp(base.a + luminance(spec) * 0.8, 0.0, 1.0);
+        }
+        // Fackeln und andere Lichter spiegeln sich auch (nachts das Wichtigste): ein
+        // glatter Glanz, am Rand stark wie bei echtem Glas und Eis.
+        var gloss = 0.03;
+        if id == M_ICE { gloss = 0.35; }
+        if id == M_GLASS { gloss = 0.45; }
+        if id == M_POLISHED { gloss = 0.15; }
+        var sheen = (torch + held) * (gloss + fres * gloss * 2.5);
+        if id == M_METAL {
+            sheen = (torch + held) * albedo * 1.6 * (0.5 + fres);
+        }
+        // Mond und Nachthimmel: ein ruhiger Schimmer, damit es nachts nicht matt wirkt.
+        let night_sky = vec3<f32>(0.010, 0.014, 0.030) * (1.0 - daylight()) * smoothstep(0.5, 0.95, sky);
+        spec += sheen + night_sky * (gloss * 4.0 + fres * 6.0) * select(1.0, 0.2, id == M_SNOW);
+        if id == M_GLASS {
+            alpha = clamp(base.a + luminance(sheen) * 0.6, 0.0, 1.0);
+        }
+        lit += spec;
+    }
+    return Surface(vec4<f32>(apply_fog(encode(lit), pos, dist), alpha));
 }

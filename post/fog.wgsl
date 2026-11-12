@@ -3,23 +3,56 @@
 // (Lichtstrahlen zwischen Baeumen, aus der Schattenkarte), morgens und
 // abends staerker.
 override haze: f32 = 0.5;
-override volumetric_light: f32 = 0.5;
 
-// 4x4-Bayer-Muster: ruhiger Versatz der Abtastpunkte ohne flimmerndes Rauschen.
-fn bayer4(pixel: vec2<f32>) -> f32 {
-    let p = vec2<u32>(pixel) % vec2<u32>(4u);
-    var m = array<f32, 16>(0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
-    return (m[p.y * 4u + p.x] + 0.5) / 16.0;
+// Lichtstrahlen aus post/shafts.wgsl (halbe Aufloesung) hochrechnen: von den vier
+// naechsten Werten zaehlen die, deren Entfernung zu diesem Pixel passt. So bleiben
+// Kanten von Baeumen und Bergen scharf.
+fn shafts_at(uv: vec2<f32>, dist: f32) -> vec3<f32> {
+    let size = vec2<f32>(textureDimensions(shaft_tex));
+    let hp = uv * size - 0.5;
+    let base = floor(hp);
+    let f = hp - base;
+    let tolerance = 0.06 * min(dist, 4000.0) + 0.3;
+    var sum = vec3<f32>(0.0);
+    var weight = 0.0;
+    for (var i = 0; i < 4; i++) {
+        let o = vec2<f32>(f32(i % 2), f32(i / 2));
+        let texel = clamp(vec2<i32>(base + o), vec2<i32>(0), vec2<i32>(size) - 1);
+        let s = textureLoad(shaft_tex, texel, 0);
+        let bilinear = mix(1.0 - f.x, f.x, o.x) * mix(1.0 - f.y, f.y, o.y);
+        let same = 1.0 / (1.0 + abs(s.a - dist) / tolerance * 4.0);
+        let w = bilinear * same + 1e-4;
+        sum += s.rgb * w;
+        weight += w;
+    }
+    return sum / weight;
 }
 
-// Weiche Variante der Kaustiken fuer die Lichtstrahlen: breite Baender statt
-// scharfer Linien, damit die Strahlen nicht koernig werden.
-fn soft_caustics(world: vec3<f32>) -> f32 {
-    let t = frame.time * 0.5;
-    let p = world.xz;
-    let a = sin(p.x + sin(p.y * 0.7 + t) * 1.3 + t * 0.6);
-    let b = sin(p.y * 1.1 + sin(p.x * 0.8 - t * 0.9) * 1.3 - t * 0.5);
-    return pow(clamp(1.0 - abs(a + b) * 0.5, 0.0, 1.0), 2.0);
+// Wolken aus post/clouds.wgsl darueberlegen: auf dem Himmel und auf Gelaende, das
+// hinter dem Anfang der Wolkenschicht liegt.
+fn add_clouds(col: vec3<f32>, uv: vec2<f32>, d: vec3<f32>, dist: f32, sky_pixel: bool) -> vec3<f32> {
+    if soft_clouds <= 0.0 {
+        return col;
+    }
+    var show = 1.0;
+    if !sky_pixel {
+        let cy = frame.camera_position.y;
+        if abs(d.y) < 0.002 {
+            return col;
+        }
+        let t0 = (C_BOTTOM - cy) / d.y;
+        let t1 = (C_TOP - cy) / d.y;
+        let t_near = max(min(t0, t1), 0.0);
+        if max(t0, t1) <= 0.0 {
+            return col;
+        }
+        show = smoothstep(t_near, t_near + 40.0, dist);
+        if show <= 0.0 {
+            return col;
+        }
+    }
+    let c = textureSampleLevel(cloud_tex, linear_sampler, uv, 0.0);
+    return mix(col, col * c.a + c.rgb, show);
 }
 
 // Schwebeteilchen unter Wasser: kleine helle Punkte, fest in der Welt.
@@ -78,26 +111,9 @@ fn underwater(input: PostInput) -> vec4<f32> {
     let fog = 1.0 - exp(-max(dist - 3.0, 0.0) * 0.016);
     col = mix(col * absorb, water, fog);
 
-    // Kraeftige Lichtstrahlen durch die Wellen, aus der Schattenkarte.
-    if frame.has_shadow == 1u && day > 0.0 {
-        let reach = min(dist, 48.0);
-        let steps = by_quality(6, 10, 16, 24);
-        let jitter = pixel_noise(input.pixel) * 0.5 + 0.25;
-        var shafts = 0.0;
-        for (var i = 0; i < steps; i++) {
-            let u = (f32(i) + jitter) / f32(steps);
-            let pv = d * (reach * u * u);
-            let sp = shadow_position(pv);
-            let lit = textureSampleCompareLevel(shadow_map, shadow_sampler, sp.xy, sp.z);
-            let wp = pv + frame.camera_position;
-            let up = max(frame.water_plane - wp.y, 0.0);
-            let at_surface = wp + l * (up / max(l.y, 0.2));
-            let c = soft_caustics(at_surface * 0.35);
-            shafts += lit * c * exp(-up * 0.04) * 2.0 * u / f32(steps);
-        }
-        let phase = 0.5 + toward_sun * 3.0 + pow(max(d.y, 0.0), 2.0) * 1.5;
-        col += vec3<f32>(0.20, 0.75, 0.70) * shafts * phase * reach * 0.04 * bright * (1.0 - frame.rain * 0.6);
-    }
+    // Kraeftige Lichtstrahlen durch die Wellen (post/shafts.wgsl).
+    let key = select(length(view_position(input.uv, max(input.depth, 1e-6))), SKY_DIST, input.depth == 0.0);
+    col += shafts_at(input.uv, key);
 
     // Schwebeteilchen, von der Sonne angeleuchtet (nicht auf Niedrig).
     if quality >= 1u {
@@ -132,18 +148,74 @@ fn calm_entities(input: PostInput, col: vec3<f32>) -> vec3<f32> {
 
 override ambient_blue_fog: f32 = 0.45;
 
+// Glut im Nether: kleine gluehende Funken, die langsam aufsteigen und flackern.
+fn embers(d: vec3<f32>, max_dist: f32) -> f32 {
+    var sum = 0.0;
+    let cam = frame.camera_position;
+    for (var k = 0; k < 5; k++) {
+        let r = 2.0 + f32(k) * 3.5;
+        if r > max_dist {
+            break;
+        }
+        let pw = cam + d * r - vec3<f32>(frame.time * 0.15, -frame.time * 0.45, 0.0);
+        let cell = floor(pw * 0.5);
+        let ci = vec3<i32>(cell) + vec3<i32>(0, 0, k * 31);
+        let spot = (cell + vec3<f32>(hash3(ci), hash3(ci + vec3<i32>(7, 0, 0)), hash3(ci + vec3<i32>(0, 9, 0)))) / 0.5;
+        let near = length(pw - spot);
+        let flicker = 0.6 + 0.4 * sin(frame.time * 6.0 + hash3(ci + vec3<i32>(2, 3, 4)) * 30.0);
+        let size = 0.03 + 0.03 * hash3(ci + vec3<i32>(0, 0, 11));
+        sum += smoothstep(size, 0.0, near) * step(0.7, hash3(ci + vec3<i32>(3, 5, 1))) * flicker / (1.0 + r * 0.15);
+    }
+    return sum;
+}
+
+// Nether und End: Dunst in der Farbe der Dimension, der durch die Luft treibt
+// (drei Proben entlang des Blicks), im Nether dazu Glut in der Luft.
+fn other_air(input: PostInput, d: vec3<f32>, dist: f32) -> vec3<f32> {
+    var col = input.color.rgb;
+    if frame.eye_in != 0u || frame.blindness > 0.0 || frame.darkness > 0.0 {
+        return col;
+    }
+    let nether = frame.dimension == -1;
+    let reach = min(dist, 64.0);
+    let cam = frame.camera_position;
+    var thick = 0.0;
+    for (var i = 0; i < 3; i++) {
+        let pw = cam + d * (reach * (f32(i) + 0.5) / 3.0);
+        thick += vnoise(pw * 0.045 + vec3<f32>(frame.time * 0.03, frame.time * 0.05, 0.0)) / 3.0;
+    }
+    let density = select(0.0035, 0.009, nether) * haze * 2.0 * mix(0.4, 1.6, thick);
+    let amount = (1.0 - exp(-min(dist, 400.0) * density)) * 0.75;
+    var air = to_linear(frame.fog_color) * select(1.3, 1.8, nether);
+    if !nether {
+        air = mix(air, vec3<f32>(0.06, 0.03, 0.10), 0.5);
+    }
+    col = mix(col, to_display(air), amount);
+    if nether && quality >= 1u {
+        col += vec3<f32>(1.0, 0.42, 0.10) * embers(d, dist) * 0.9;
+    }
+    return col;
+}
+
 fn post(input: PostInput) -> vec4<f32> {
     if frame.dimension == 0 && camera_underwater() {
         return underwater(input);
-    }
-    if frame.dimension != 0 || frame.eye_in != 0u {
-        return input.color;
     }
     let sky_pixel = input.depth == 0.0;
     let p = view_position(input.uv, select(1e-4, input.depth, !sky_pixel));
     let dist = select(length(p), 1e9, sky_pixel);
     let d = normalize(p);
-    var col = calm_entities(input, input.color.rgb);
+    if frame.dimension == -1 || frame.dimension == 1 {
+        return vec4<f32>(other_air(input, d, dist), input.color.a);
+    }
+    if frame.dimension != 0 {
+        return input.color;
+    }
+    var col = add_clouds(input.color.rgb, input.uv, d, dist, sky_pixel);
+    if frame.eye_in != 0u {
+        return vec4<f32>(col, input.color.a);
+    }
+    col = calm_entities(input, col);
     let outside = smoothstep(0.15, 0.7, frame.eye_light_smooth.y);
 
     // Luftperspektive auf dem Gelaende.
@@ -162,27 +234,7 @@ fn post(input: PostInput) -> vec4<f32> {
         col = mix(col, air, clamp(amount, 0.0, 0.9));
     }
 
-    // Volumetrisches Licht durch die Schattenkarte.
-    let strength = sun_visible() + moon_visible() * (1.0 - sun_visible()) * 0.4;
-    // Auf Niedrig aus, sonst 8, 12 oder 20 Schritte.
-    if quality >= 1u && volumetric_light > 0.0 && frame.has_shadow == 1u && strength > 0.0 {
-        let l = light_dir();
-        let reach = min(dist, frame.shadow_distance * 0.9);
-        // Nah an der Kamera dichter abtasten: dort sieht man die Strahlen am besten.
-        let steps = by_quality(8, 8, 12, 20);
-        let jitter = bayer4(input.pixel);
-        var lit = 0.0;
-        for (var i = 0; i < steps; i++) {
-            let u = (f32(i) + jitter) / f32(steps);
-            let sp = shadow_position(d * (reach * u * u));
-            lit += textureSampleCompareLevel(shadow_map, shadow_sampler, sp.xy, sp.z) * 2.0 * u * reach / f32(steps);
-        }
-        let mu = dot(d, l);
-        let phase = hg_phase(mu, 0.70) * 12.566 * 0.8 + 0.2;
-        let density = 0.0035 * (1.0 + 2.5 * sun_low()) * (1.0 + frame.rain * 1.5) * volumetric_light;
-        let amount = (1.0 - exp(-lit * density)) * phase * 0.07 * strength;
-        let tint = mix(vec3<f32>(0.35, 0.45, 0.7), sun_tint() * vec3<f32>(1.0, 0.9, 0.75), sun_visible());
-        col += tint * amount * mix(0.4, 1.0, outside);
-    }
+    // Volumetrisches Licht (post/shafts.wgsl, halbe Aufloesung).
+    col += shafts_at(input.uv, select(dist, SKY_DIST, sky_pixel));
     return vec4<f32>(col, input.color.a);
 }

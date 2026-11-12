@@ -1,4 +1,5 @@
 // Lichtstrahlen (God Rays): radiale Unschaerfe des sichtbaren Himmels zur Sonne hin.
+// Halbe Aufloesung, schreibt nur das zusaetzliche Licht in ray_tex (post/grade.wgsl addiert).
 override rays: f32 = 0.3;
 
 fn sun_uv() -> vec4<f32> {
@@ -10,12 +11,16 @@ fn sun_uv() -> vec4<f32> {
 fn post(input: PostInput) -> vec4<f32> {
     let s = sun_uv();
     let up = daylight() * (1.0 - frame.rain);
-    if rays <= 0.0 || s.z <= 0.0 || up <= 0.0 || frame.eye_in != 0u || camera_underwater() {
-        return input.color;
+    if rays <= 0.0 || frame.dimension != 0 || s.z <= 0.0 || up <= 0.0 || frame.eye_in != 0u || camera_underwater() {
+        return vec4<f32>(0.0);
     }
     let aspect = frame.resolution.x / frame.resolution.y;
     let to_sun = s.xy - input.uv;
     let dist = length(to_sun * vec2<f32>(aspect, 1.0));
+    // Weit weg von der Sonne kommt nichts mehr an: gar nicht erst rechnen.
+    if exp(-dist * 2.2) < 0.01 {
+        return vec4<f32>(0.0);
+    }
     let steps = by_quality(10, 14, 20, 28);
     let delta = to_sun / f32(steps) * 0.85;
     var uv = input.uv;
@@ -29,5 +34,5 @@ fn post(input: PostInput) -> vec4<f32> {
     let falloff = exp(-dist * 2.2);
     let low = mix(0.6, 1.4, 1.0 - smoothstep(0.0, 0.5, frame.sun_direction.y));
     let shaft = sun_tint() * sum * falloff * rays * 0.35 * up * low;
-    return vec4<f32>(input.color.rgb + shaft, input.color.a);
+    return vec4<f32>(shaft, 1.0);
 }

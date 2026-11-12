@@ -1,7 +1,7 @@
 schema = 1
 id = "lumen"
 name = "Lumen"
-version = "2.5.1"
+version = "2.6.0"
 api = "0.1"
 description = "A cozy Photon-style shader: soft shadows, warm sky, volumetric clouds, light shafts, clear water with reflections, beautiful underwater, waving plants and coloured light. Original code."
 authors = ["Lutziano888"]
@@ -13,6 +13,7 @@ file = "sky.wgsl"
 name = "Atmosphere"
 clouds = false
 sun = false
+stars = false
 
 [vertex]
 file = "vertex.wgsl"
@@ -36,21 +37,35 @@ distance_option = "shadow_distance"
 [reflection]
 option = "reflections"
 
+# Weiche Effekte in halber Aufloesung (ein Viertel der Pixel), jeweils in ein
+# eigenes Ziel; fog und grade setzen sie in voller Aufloesung zusammen.
 [[post]]
 file = "post/clouds.wgsl"
 name = "Clouds"
+scale = 0.5
+output = "cloud_tex"
+
+[[post]]
+file = "post/shafts.wgsl"
+name = "Light Shafts"
+scale = 0.5
+output = "shaft_tex"
 
 [[post]]
 file = "post/fog.wgsl"
-name = "Air and Light Shafts"
+name = "Air and Fog"
 
 [[post]]
 file = "post/rays.wgsl"
 name = "Sun Rays"
+scale = 0.5
+output = "ray_tex"
 
 [[post]]
 file = "post/bloom.wgsl"
 name = "Bloom"
+scale = 0.5
+output = "glow_tex"
 
 [[post]]
 file = "post/grade.wgsl"
@@ -67,7 +82,7 @@ items = ["quality", "page:performance", "page:light", "page:sky", "page:water", 
 id = "performance"
 name = "Graphics and Performance"
 description = "A quality level that fits your PC, plus shadows and reflections, which cost the most performance."
-items = ["quality", "shadows", "shadow_quality", "shadow_distance", "reflections"]
+items = ["quality", "shadows", "shadow_quality", "shadow_distance", "reflections", "anti_aliasing"]
 
 [[pages]]
 id = "light"
@@ -123,6 +138,13 @@ description = "How many blocks around you get shadows. Farther costs more and ma
 type = "choice"
 values = ["64", "96", "128", "192", "256"]
 default = "128"
+
+[[options]]
+id = "anti_aliasing"
+name = "Anti-Aliasing"
+description = "Smooths jagged edges (Horizon's own anti-aliasing is off while a shader draws the picture)."
+type = "bool"
+default = true
 
 [[options]]
 id = "sun_strength"
@@ -362,6 +384,36 @@ sprites = ["block/kelp", "block/kelp_plant"]
 [[materials]]
 id = 9
 sprites = ["block/lily_pad"]
+
+[[materials]]
+id = 10
+sprites = ["block/ice", "block/packed_ice", "block/blue_ice", "block/frosted_ice*"]
+
+[[materials]]
+id = 11
+sprites = [
+    "block/iron_block", "block/gold_block", "block/diamond_block", "block/emerald_block",
+    "block/netherite_block", "block/copper_block", "block/exposed_copper", "block/weathered_copper",
+    "block/cut_copper", "block/exposed_cut_copper", "block/weathered_cut_copper",
+    "block/raw_gold_block", "block/lapis_block", "block/amethyst_block", "block/heavy_core*",
+    "block/iron_bars", "block/chain", "block/anvil*", "block/chipped_anvil*", "block/damaged_anvil*",
+]
+
+[[materials]]
+id = 12
+sprites = ["block/snow", "block/powder_snow"]
+
+[[materials]]
+id = 13
+sprites = [
+    "block/polished_*", "block/smooth_stone*", "block/smooth_quartz", "block/quartz_block*",
+    "block/quartz_pillar*", "block/*_glazed_terracotta", "block/obsidian", "block/crying_obsidian",
+    "block/prismarine_bricks", "block/dark_prismarine", "block/calcite",
+]
+
+[[materials]]
+id = 14
+sprites = ["block/glass", "block/*_stained_glass", "block/tinted_glass", "block/glass_pane_top", "block/*_stained_glass_pane_top"]
 
 # --- Coloured block light ---
 

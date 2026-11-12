@@ -15,6 +15,12 @@ const M_SEA_PLANT: u32 = 6u;
 const M_SEA_UPPER: u32 = 7u;
 const M_KELP: u32 = 8u;
 const M_LILY: u32 = 9u;
+// Glaenzende Bloecke (nur material.wgsl).
+const M_ICE: u32 = 10u;
+const M_METAL: u32 = 11u;
+const M_SNOW: u32 = 12u;
+const M_POLISHED: u32 = 13u;
+const M_GLASS: u32 = 14u;
 
 fn wind_offset(world: vec3<f32>, speed: f32) -> vec3<f32> {
     let t = frame.time * speed;

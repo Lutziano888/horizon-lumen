@@ -1,33 +1,35 @@
 // Volumetrische Wolken (eigene Umsetzung, inspiriert vom Photon-Look).
+// Laeuft in halber Aufloesung (ein Viertel der Pixel) und schreibt in cloud_tex:
+// rgb das Licht der Wolken, a wie viel vom Hintergrund durchscheint. post/fog.wgsl
+// legt sie in voller Aufloesung ueber das Bild, nur dort wo Himmel ist.
 // Vanillas Block-Wolken sind aus ([sky] clouds = false); stattdessen wird eine
 // Wolkenschicht aus 3D-Rauschen (cloud_density in common.wgsl) durchlaufen:
 // weiche Kumuluswolken mit flachem Boden, runden Koepfen, ausgefransten
 // Raendern, Selbstschatten, hellem Rand Richtung Sonne und Himmelslicht von oben.
 
 fn post(input: PostInput) -> vec4<f32> {
+    let none = vec4<f32>(0.0, 0.0, 0.0, 1.0);
     if soft_clouds <= 0.0 || frame.dimension != 0 {
-        return input.color;
+        return none;
     }
-    let p = view_position(input.uv, select(1e-4, input.depth, input.depth > 0.0));
-    let d = normalize(p);
-    // Gelaende verdeckt die Wolken dahinter.
-    let terrain = select(1e9, length(p), input.depth > 0.0);
+    // Die Richtung allein: das Gelaende verdeckt erst beim Zusammensetzen.
+    let d = normalize(view_position(input.uv, 1e-4));
 
     // Schnitt mit der Wolkenschicht.
     let cy = frame.camera_position.y;
     if abs(d.y) < 0.002 {
-        return input.color;
+        return none;
     }
     let t0 = (C_BOTTOM - cy) / d.y;
     let t1 = (C_TOP - cy) / d.y;
     let t_near = max(min(t0, t1), 0.0);
-    let t_far = min(min(max(t0, t1), t_near + 1500.0), terrain);
+    let t_far = min(max(t0, t1), t_near + 1500.0);
     if t_far <= t_near || t_near > 6000.0 {
-        return input.color;
+        return none;
     }
 
-    // Niedrig 8, Mittel 12, Hoch 16, Ultra 24 Schritte durch die Wolkenschicht.
-    let steps = by_quality(8, 12, 16, 24);
+    // Niedrig 8, Mittel 12, Hoch 18, Ultra 28 Schritte durch die Wolkenschicht.
+    let steps = by_quality(8, 12, 18, 28);
     let fine = quality >= 1u;
     let dt = (t_far - t_near) / f32(steps);
     let jitter = pixel_noise(input.pixel);
@@ -81,6 +83,5 @@ fn post(input: PostInput) -> vec4<f32> {
     let fade = exp(-t_near / 2800.0) * smoothstep(0.0, 0.06, d.y + 0.02) * min(soft_clouds, 1.0);
     let horizon_sky = atmosphere(d);
     let clouds = mix(horizon_sky * (1.0 - transmit), light, fade);
-    let result = input.color.rgb * mix(1.0, transmit, fade) + clouds * fade;
-    return vec4<f32>(result, input.color.a);
+    return vec4<f32>(clouds * fade, mix(1.0, transmit, fade));
 }

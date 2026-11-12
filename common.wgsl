@@ -3,6 +3,9 @@
 override soft_clouds: f32 = 1.0;
 override cloud_amount: f32 = 0.4;
 
+// Entfernung, die post/shafts.wgsl fuer Himmelspixel speichert.
+const SKY_DIST: f32 = 60000.0;
+
 // Grafikstufe: 0 Niedrig, 1 Mittel, 2 Hoch, 3 Ultra. Hoch ist der bisherige Look;
 // die anderen Stufen tasten weniger oder mehr ab, das Design bleibt gleich.
 override quality: u32 = 2u;
@@ -158,6 +161,78 @@ fn vnoise(p: vec3<f32>) -> f32 {
     let h = hash3(i + vec3<i32>(0, 1, 1));
     let k = hash3(i + vec3<i32>(1, 1, 1));
     return mix(mix(mix(a, b, u.x), mix(c, d, u.x), u.y), mix(mix(e, g, u.x), mix(h, k, u.x), u.y), u.z);
+}
+
+// Wie vnoise, dazu die Steigung: (Wert, d/dx, d/dy, d/dz). Fuer Wellen, deren
+// Neigung so exakt in einem Durchgang herauskommt statt aus drei Auswertungen.
+fn vnoise_d(p: vec3<f32>) -> vec4<f32> {
+    let fl = floor(p);
+    let i = vec3<i32>(fl);
+    let f = p - fl;
+    let u = f * f * (3.0 - 2.0 * f);
+    let du = 6.0 * f * (1.0 - f);
+    let a = hash3(i);
+    let b = hash3(i + vec3<i32>(1, 0, 0));
+    let c = hash3(i + vec3<i32>(0, 1, 0));
+    let d = hash3(i + vec3<i32>(1, 1, 0));
+    let e = hash3(i + vec3<i32>(0, 0, 1));
+    let g = hash3(i + vec3<i32>(1, 0, 1));
+    let h = hash3(i + vec3<i32>(0, 1, 1));
+    let k = hash3(i + vec3<i32>(1, 1, 1));
+    let k1 = b - a;
+    let k2 = c - a;
+    let k3 = e - a;
+    let k4 = a - b - c + d;
+    let k5 = a - c - e + h;
+    let k6 = a - b - e + g;
+    let k7 = -a + b + c - d + e - g - h + k;
+    let v = a + k1 * u.x + k2 * u.y + k3 * u.z + k4 * u.x * u.y + k5 * u.y * u.z + k6 * u.z * u.x + k7 * u.x * u.y * u.z;
+    let grad = du * vec3<f32>(
+        k1 + k4 * u.y + k6 * u.z + k7 * u.y * u.z,
+        k2 + k5 * u.z + k4 * u.x + k7 * u.z * u.x,
+        k3 + k6 * u.x + k5 * u.y + k7 * u.x * u.y);
+    return vec4<f32>(v, grad);
+}
+
+// Gradientenrauschen mit Steigung: (Wert, d/dx, d/dy, d/dz), Wert etwa -0,7..0,7.
+// Runder und ohne die kantigen Gitterspuren von vnoise, deshalb fuer Wasserwellen.
+fn gnoise_corner(i: vec3<i32>, w: vec3<f32>) -> vec4<f32> {
+    let h = hash3(i);
+    let ang = h * 6.2831853;
+    let z = fract(h * 37.0) * 2.0 - 1.0;
+    let r = sqrt(max(1.0 - z * z, 0.0));
+    let g = vec3<f32>(r * cos(ang), r * sin(ang), z);
+    return vec4<f32>(dot(g, w), g);
+}
+
+fn gnoise_d(p: vec3<f32>) -> vec4<f32> {
+    let fl = floor(p);
+    let i = vec3<i32>(fl);
+    let w = p - fl;
+    let u = w * w * w * (w * (w * 6.0 - 15.0) + 10.0);
+    let du = 30.0 * w * w * (w * (w - 2.0) + 1.0);
+    let a = gnoise_corner(i, w);
+    let b = gnoise_corner(i + vec3<i32>(1, 0, 0), w - vec3<f32>(1.0, 0.0, 0.0));
+    let c = gnoise_corner(i + vec3<i32>(0, 1, 0), w - vec3<f32>(0.0, 1.0, 0.0));
+    let d = gnoise_corner(i + vec3<i32>(1, 1, 0), w - vec3<f32>(1.0, 1.0, 0.0));
+    let e = gnoise_corner(i + vec3<i32>(0, 0, 1), w - vec3<f32>(0.0, 0.0, 1.0));
+    let f = gnoise_corner(i + vec3<i32>(1, 0, 1), w - vec3<f32>(1.0, 0.0, 1.0));
+    let g = gnoise_corner(i + vec3<i32>(0, 1, 1), w - vec3<f32>(0.0, 1.0, 1.0));
+    let h = gnoise_corner(i + vec3<i32>(1, 1, 1), w - vec3<f32>(1.0, 1.0, 1.0));
+    // Werte (x) und Gradienten (yzw) gleich trilinear mischen.
+    let k1 = b - a;
+    let k2 = c - a;
+    let k3 = e - a;
+    let k4 = a - b - c + d;
+    let k5 = a - c - e + g;
+    let k6 = a - b - e + f;
+    let k7 = -a + b + c - d + e - f - g + h;
+    let m = a + k1 * u.x + k2 * u.y + k3 * u.z + k4 * u.x * u.y + k5 * u.y * u.z + k6 * u.z * u.x + k7 * u.x * u.y * u.z;
+    let slope = m.yzw + du * vec3<f32>(
+        k1.x + k4.x * u.y + k6.x * u.z + k7.x * u.y * u.z,
+        k2.x + k5.x * u.z + k4.x * u.x + k7.x * u.z * u.x,
+        k3.x + k6.x * u.x + k5.x * u.y + k7.x * u.x * u.y);
+    return vec4<f32>(m.x, slope);
 }
 
 // Dichte der Wolkenschicht am Weltpunkt `pw`.

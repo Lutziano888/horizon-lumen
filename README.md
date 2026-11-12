@@ -4,14 +4,18 @@ A cozy shader pack for [Horizon](https://playhorizon.dev) in Horizon's own forma
 
 - Soft sun and moon shadows from a shadow map
 - A warm, physically inspired sky with a round sun and golden sunsets
+- Twinkling stars and a faint Milky Way at night, a rainbow after the rain
 - Volumetric clouds with drifting cloud shadows
 - Light shafts through trees, sun rays, bloom and haze in the distance
-- Clear water with waves, refraction, depth colour, reflections and the sun's glint
+- Clear water with waves, refraction, depth colour, reflections, the sun's glint and a moon path at night
 - Clear turquoise water with caustics when you dive
 - Waving leaves, grass, flowers, vines and seagrass
 - Leaves glow when the sun is behind them
 - Coloured block light (soul fire blue, redstone red, amethyst purple, ...) and glowing fireflies
-- Wet ground after rain, softer rain and snow
+- Wet ground and puddles with rain ripples after rain, softer rain and snow
+- Shiny ice, metal blocks, polished stone and glass, glittering snow, glowing lava
+- Drifting haze and glowing embers in the Nether, a violet nebula sky in the End
+- Its own anti-aliasing, and the soft effects drawn at half resolution for speed
 
 Every effect can be changed in the game: Options > Horizon Settings > Shader Packs > Shader Options.
 
